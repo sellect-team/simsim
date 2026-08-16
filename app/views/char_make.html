@@ -1,0 +1,223 @@
+<div class="charRow">
+  <select id="mkBg" style="min-width:190px"><option value="">배경 없음 (검은 화면)</option></select>
+  <select id="chSize" style="width:auto">
+    <option value="1280x720" selected>가로 1280×720</option>
+    <option value="1920x1080">가로 1920×1080</option>
+    <option value="1080x1920">세로 1080×1920 (쇼츠)</option>
+    <option value="1080x1080">정사각 1080×1080</option>
+  </select>
+  <select id="chFps" style="width:auto">
+    <option value="24">24fps</option><option value="30" selected>30fps</option><option value="60">60fps</option>
+  </select>
+  <button class="ghost small" id="mkAudioPick" type="button">🎵 음악 넣기</button>
+  <span class="hint" id="mkAudioInfo" style="align-self:center"></span>
+  <input type="file" id="mkAudioFile" accept="audio/*" style="display:none">
+</div>
+
+<div id="charStage" style="margin-top:12px"><canvas id="charCanvas"></canvas></div>
+<div id="mkTimeline" style="display:flex; gap:3px; margin-top:6px"></div>
+<div class="charRow" style="margin-top:8px">
+  <button class="ghost" id="chPlay">▶ 미리보기</button>
+  <button class="ghost small" id="chStop">⏹ 정지</button>
+  <span class="hint" id="mkTime">0:00 / 0:00</span>
+  <span style="flex:1"></span>
+  <button id="chMake">🎬 영상 만들기 (백그라운드)</button>
+</div>
+<div id="chBarWrap" style="display:none; margin-top:8px">
+  <div style="height:10px; background:rgba(255,255,255,0.08); border-radius:6px; overflow:hidden">
+    <div id="chBar" style="height:100%; width:0%; background:var(--color-electric-iris); transition:width .2s"></div>
+  </div>
+</div>
+<div id="mkStatus" class="hint" style="text-align:center; min-height:18px; margin-top:6px"></div>
+
+<div class="mkCols">
+  <!-- 출연진 -->
+  <div>
+    <h3 class="mkHead">👥 출연 캐릭터</h3>
+    <div class="charRow">
+      <select id="mkAddChar" style="flex:1"><option value="">그림 캐릭터 추가…</option></select>
+    </div>
+    <div class="charRow" style="margin-top:6px">
+      <select id="mkAddMesh" style="flex:1"><option value="">🧊 3D 모델 추가…</option></select>
+      <button class="ghost small" id="mkMeshRefresh" type="button">🔄</button>
+    </div>
+    <div id="mkCast" class="vlist" style="margin-top:8px"></div>
+
+    <div id="mkActorOpt" style="display:none; margin-top:10px; border:1px solid var(--border);
+         border-radius:12px; padding:12px; background:rgba(0,0,0,0.18)">
+      <div style="font-size:13px; font-weight:600; margin-bottom:8px">
+        선택한 캐릭터 설정 — <span id="mkActorName" style="color:var(--accent)"></span>
+      </div>
+      <div class="grid">
+        <div><label>크기 <span class="hint" id="chScaleHint">100%</span></label>
+          <div class="numRow"><input type="range" id="chScaleR" min="10" max="220" step="1" value="100">
+            <input type="number" id="chScale" min="5" max="300" step="1" value="100"><span class="unit">%</span></div></div>
+        <div><label>바닥 높이 <span class="hint" id="chFloorHint">78%</span></label>
+          <div class="numRow"><input type="range" id="chFloorR" min="20" max="100" step="1" value="78">
+            <input type="number" id="chFloor" min="0" max="120" step="1" value="78"><span class="unit">%</span></div></div>
+        <div><label>그림자 <span class="hint" id="chShadowHint">35%</span></label>
+          <div class="numRow"><input type="range" id="chShadowR" min="0" max="80" step="1" value="35">
+            <input type="number" id="chShadow" min="0" max="80" step="1" value="35"><span class="unit">%</span></div></div>
+        <div><label>앞뒤 순서 <span class="hint" id="chZHint">0</span></label>
+          <div class="numRow"><input type="range" id="chZR" min="-10" max="10" step="1" value="0">
+            <input type="number" id="chZ" min="-99" max="99" step="1" value="0"></div></div>
+        <div><label>측면 그림이 보는 방향</label><select id="chFacing">
+          <option value="left" selected>왼쪽을 봄</option><option value="right">오른쪽을 봄</option>
+        </select></div>
+        <div class="meshOnly"><label>3D 모델 색</label>
+          <input type="color" id="chMeshColor" value="#f4dcae" style="width:100%; height:34px; padding:2px"></div>
+        <div class="meshOnly"><label>3D 기본 각도 <span class="hint" id="chTurnHint">0°</span></label>
+          <div class="numRow"><input type="range" id="chTurnR" min="-180" max="180" step="5" value="0">
+            <input type="number" id="chTurn" min="-360" max="360" step="5" value="0"><span class="unit">°</span></div></div>
+        <div><label>머리 흔들기</label><select id="chHead">
+          <option value="1" selected>사용</option><option value="0">사용 안 함</option>
+        </select></div>
+        <div><label>머리 비율 <span class="hint" id="chHeadRHint">46%</span></label>
+          <div class="numRow"><input type="range" id="chHeadRR" min="20" max="70" step="1" value="46">
+            <input type="number" id="chHeadR" min="10" max="90" step="1" value="46"><span class="unit">%</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 장면 -->
+  <div>
+    <h3 class="mkHead">🎬 장면</h3>
+    <div class="charRow">
+      <button class="ghost small" id="mkAddShot">＋ 장면 추가</button>
+      <button class="ghost small" id="mkDupShot">⧉ 복제</button>
+      <button class="ghost small" id="mkUpShot">▲</button>
+      <button class="ghost small" id="mkDownShot">▼</button>
+      <button class="danger small" id="mkDelShot">삭제</button>
+    </div>
+    <div class="charRow" style="margin-top:6px">
+      <button class="ghost small" id="mkSaveScene">💾 이 장면 저장</button>
+      <select id="mkLoadScene" style="flex:1; min-width:150px"><option value="">저장된 장면 불러오기…</option></select>
+      <button class="ghost small" id="mkSceneRefresh" type="button">🔄</button>
+    </div>
+    <div id="mkShots" class="vlist" style="margin-top:8px"></div>
+
+    <div id="mkShotOpt" style="margin-top:10px; border:1px solid var(--border);
+         border-radius:12px; padding:12px; background:rgba(0,0,0,0.18)">
+      <div style="font-size:13px; font-weight:600; margin-bottom:8px">
+        선택한 장면 — <span id="mkShotName" style="color:var(--accent)"></span>
+      </div>
+      <div class="grid">
+        <div><label>장면 이름</label><input id="shName" type="text" placeholder="예) 골목에서 인사"></div>
+        <div><label>장면 길이</label>
+          <div class="numRow"><input type="range" id="shSecsR" min="1" max="20" step="0.5" value="3">
+            <input type="number" id="shSecs" min="0.5" max="60" step="0.5" value="3"><span class="unit">초</span></div></div>
+        <div><label>배경 카메라</label><select id="chCam"></select></div>
+        <div><label>자막 (비우면 없음)</label><input id="chCapText" type="text" placeholder="예) 산책 가는 길"></div>
+        <div><label>자막 위치</label><select id="chCapPos">
+          <option value="bottom" selected>아래</option><option value="top">위</option></select></div>
+        <div><label>자막 크기 <span class="hint" id="chCapSizeHint">5.5%</span></label>
+          <div class="numRow"><input type="range" id="chCapSizeR" min="2" max="12" step="0.5" value="5.5">
+            <input type="number" id="chCapSize" min="1" max="20" step="0.5" value="5.5"><span class="unit">%</span></div></div>
+        <div><label>자막 배경</label><select id="chCapBox">
+          <option value="1" selected>어두운 띠 넣기</option><option value="0">글자만</option></select></div>
+      </div>
+
+      <div style="border-top:1px solid var(--border); margin-top:12px; padding-top:10px">
+        <div class="charRow" style="margin-bottom:6px">
+          <b style="font-size:12.5px">💬 말풍선</b>
+          <button class="ghost small" id="bbAdd" type="button">＋ 추가</button>
+          <button class="danger small" id="bbDel" type="button">삭제</button>
+          <select id="bbList" style="flex:1; min-width:140px"><option value="">말풍선 없음</option></select>
+        </div>
+        <div id="bbOpt" class="grid" style="display:none">
+          <div style="grid-column:1/-1"><label>내용 (줄바꿈 가능)</label>
+            <textarea id="bbText" rows="2" placeholder="예) 안녕! 나랑 놀자"></textarea></div>
+          <div><label>누구의 말풍선</label><select id="bbActor"></select></div>
+          <div><label>위치</label><select id="bbPos"></select></div>
+          <div><label>모양</label><select id="bbStyle"></select></div>
+          <div><label>글꼴</label><select id="bbFont"></select></div>
+          <div><label>글자 크기 <span class="hint" id="bbSizeHint">4.5%</span></label>
+            <div class="numRow"><input type="range" id="bbSizeR" min="2" max="12" step="0.5" value="4.5">
+              <input type="number" id="bbSize" min="1" max="20" step="0.5" value="4.5"><span class="unit">%</span></div></div>
+          <div><label>최대 너비 <span class="hint" id="bbWideHint">34%</span></label>
+            <div class="numRow"><input type="range" id="bbWideR" min="10" max="90" step="1" value="34">
+              <input type="number" id="bbWide" min="5" max="100" step="1" value="34"><span class="unit">%</span></div></div>
+          <div><label>글자 굵게</label><select id="bbBold">
+            <option value="1" selected>굵게</option><option value="0">보통</option></select></div>
+          <div><label>글자 색</label><input type="color" id="bbColor" value="#2b2119" style="width:100%;height:34px;padding:2px"></div>
+          <div><label>풍선 색</label><input type="color" id="bbBg" value="#ffffff" style="width:100%;height:34px;padding:2px"></div>
+          <div><label>테두리 색</label><input type="color" id="bbBorder" value="#2b2119" style="width:100%;height:34px;padding:2px"></div>
+          <div style="grid-column:1/-1">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0">
+              <input type="checkbox" id="bbAutoFlip" checked style="width:auto; margin:0">
+              화면 밖으로 잘리면 반대쪽으로 자동 이동
+            </label>
+          </div>
+          <div><label>나타나는 시각 <span class="hint" id="bbAtHint">0초</span></label>
+            <div class="numRow"><input type="range" id="bbAtR" min="0" max="20" step="0.5" value="0">
+              <input type="number" id="bbAt" min="0" max="120" step="0.5" value="0"><span class="unit">초</span></div></div>
+          <div><label>보이는 시간 (0=끝까지) <span class="hint" id="bbDurHint">0초</span></label>
+            <div class="numRow"><input type="range" id="bbDurR" min="0" max="20" step="0.5" value="0">
+              <input type="number" id="bbDur" min="0" max="120" step="0.5" value="0"><span class="unit">초</span></div></div>
+          <div><label>좌우 미세조정 <span class="hint" id="bbOxHint">0%</span></label>
+            <div class="numRow"><input type="range" id="bbOxR" min="-40" max="40" step="1" value="0">
+              <input type="number" id="bbOx" min="-100" max="100" step="1" value="0"><span class="unit">%</span></div></div>
+          <div><label>상하 미세조정 <span class="hint" id="bbOyHint">0%</span></label>
+            <div class="numRow"><input type="range" id="bbOyR" min="-40" max="40" step="1" value="0">
+              <input type="number" id="bbOy" min="-100" max="100" step="1" value="0"><span class="unit">%</span></div></div>
+        </div>
+      </div>
+
+      <div style="font-size:12.5px; font-weight:600; margin:12px 0 6px">
+        이 장면에서 <span id="mkActInName" style="color:var(--accent)">캐릭터</span> 의 움직임
+      </div>
+      <div class="grid">
+        <div><label>화면에 보이기</label><select id="actVisible">
+          <option value="1" selected>보임</option><option value="0">숨김</option></select></div>
+        <div><label>동작</label>
+          <div class="numRow">
+            <select id="chMotion" style="flex:1"></select>
+            <button class="ghost small" id="chMotionPreview" type="button" style="width:auto">▶ 미리보기</button>
+          </div>
+        </div>
+        <div><label>동작 속도 <span class="hint" id="chSpeedHint">1.0×</span></label>
+          <div class="numRow"><input type="range" id="chSpeedR" min="10" max="300" step="5" value="100">
+            <input type="number" id="chSpeed" min="10" max="300" step="5" value="100"><span class="unit">%</span></div></div>
+        <div><label>좌우 위치 <span class="hint" id="chPosHint">50%</span></label>
+          <div class="numRow"><input type="range" id="chPosR" min="-20" max="120" step="1" value="50">
+            <input type="number" id="chPos" min="-50" max="150" step="1" value="50"><span class="unit">%</span></div></div>
+      </div>
+
+      <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:10px">
+        <label style="width:auto; margin:0 0 8px; display:flex; align-items:center; gap:8px; cursor:pointer">
+          <input type="checkbox" id="chPathOn" style="width:auto; margin:0">
+          <b style="font-size:12.5px">📍 좌표 이동 (미리보기를 클릭해 점을 찍을 수 있어요)</b>
+        </label>
+        <div class="grid">
+          <div><label>시작 X <span class="hint" id="chX1Hint">15%</span></label>
+            <div class="numRow"><input type="range" id="chX1R" min="-20" max="120" step="1" value="15">
+              <input type="number" id="chX1" min="-50" max="150" step="1" value="15"><span class="unit">%</span></div></div>
+          <div><label>시작 Y <span class="hint" id="chY1Hint">78%</span></label>
+            <div class="numRow"><input type="range" id="chY1R" min="10" max="110" step="1" value="78">
+              <input type="number" id="chY1" min="0" max="130" step="1" value="78"><span class="unit">%</span></div></div>
+          <div><label>끝 X <span class="hint" id="chX2Hint">85%</span></label>
+            <div class="numRow"><input type="range" id="chX2R" min="-20" max="120" step="1" value="85">
+              <input type="number" id="chX2" min="-50" max="150" step="1" value="85"><span class="unit">%</span></div></div>
+          <div><label>끝 Y <span class="hint" id="chY2Hint">78%</span></label>
+            <div class="numRow"><input type="range" id="chY2R" min="10" max="110" step="1" value="78">
+              <input type="number" id="chY2" min="0" max="130" step="1" value="78"><span class="unit">%</span></div></div>
+          <div><label>가감속</label><select id="chEase"></select></div>
+          <div><label>시작 상태</label><select id="actStart"><option value="">그대로</option></select></div>
+          <div><label>끝 상태</label><select id="actEnd"><option value="">그대로</option></select></div>
+          <div><label>몇 초 뒤에 바뀔지 <span class="hint" id="chChangeAtHint">0초</span></label>
+            <div class="numRow"><input type="range" id="chChangeAtR" min="0" max="20" step="0.5" value="0">
+              <input type="number" id="chChangeAt" min="0" max="120" step="0.5" value="0"><span class="unit">초</span></div></div>
+          <div><label>바뀌는 데 걸리는 시간 <span class="hint" id="chChangeDurHint">1초</span></label>
+            <div class="numRow"><input type="range" id="chChangeDurR" min="0.1" max="20" step="0.1" value="1">
+              <input type="number" id="chChangeDur" min="0.1" max="60" step="0.1" value="1"><span class="unit">초</span></div></div>
+        </div>
+        <div class="charRow" style="margin-top:6px">
+          <button class="ghost small" id="chSetStart" type="button">🖱 시작점 찍기</button>
+          <button class="ghost small" id="chSetEnd" type="button">🖱 끝점 찍기</button>
+          <button class="ghost small" id="chStates" type="button">🎛 상태 관리</button>
+          <span class="hint" id="chPickHint"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

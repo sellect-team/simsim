@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>3D 캐릭터 스튜디오 — 배경 위에서 움직이는 강아지</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; padding:18px; background:#12100e; color:#EFE6D8;
+         font-family:"Pretendard","Malgun Gothic",system-ui,sans-serif; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { font-size:12.5px; color:#a9998a; margin-bottom:14px; }
+  .wrap { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+  #view { position:relative; width:720px; height:405px; border-radius:14px; overflow:hidden;
+          background:#F3EDE2; box-shadow:0 10px 30px rgba(0,0,0,.45); }
+  #bgimg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #gl { position:absolute; inset:0; width:100%; height:100%; }
+  .panel { width:330px; background:#1c1916; border-radius:14px; padding:14px 16px;
+           max-height:86vh; overflow-y:auto; }
+  .panel h2 { font-size:12px; color:#c8a273; margin:14px 0 7px; letter-spacing:.4px; }
+  .panel h2:first-child { margin-top:0; }
+  .ctl { display:flex; align-items:center; gap:8px; margin-bottom:5px; font-size:12px; }
+  .ctl label { width:92px; color:#a9998a; flex-shrink:0; }
+  .ctl input[type=range] { flex:1; accent-color:#e0a33c; }
+  .ctl input[type=number] { width:56px; text-align:right; font-size:12px; padding:2px 4px;
+        border:1px solid #38312a; border-radius:6px; background:#241f1a; color:#EFE6D8; }
+  .ctl input[type=color] { width:34px; height:24px; padding:0; border:1px solid #38312a; border-radius:6px; background:#241f1a; }
+  .btns { display:flex; gap:7px; flex-wrap:wrap; margin-top:10px; }
+  button { padding:8px 12px; font-size:12.5px; font-weight:600; border-radius:999px; cursor:pointer;
+           border:1px solid #4a3f34; background:#241f1a; color:#EFE6D8; }
+  button.on { background:#e0a33c; border-color:#e0a33c; color:#221a10; }
+  #status { font-size:12px; color:#c8a273; min-height:16px; margin-top:8px; }
+  textarea { width:100%; height:90px; background:#241f1a; color:#cfc3b4; border:1px solid #38312a;
+             border-radius:10px; font-size:11px; font-family:ui-monospace,Consolas,monospace; padding:8px; margin-top:8px; }
+</style>
+</head>
+<body>
+<h1>🐶 3D 캐릭터 스튜디오</h1>
+<div class="sub">캐릭터가 3D 모델(코드)로 만들어져 있어 어느 각도에서든 볼 수 있고, 배경 사진 위에 올려 움직임을 준 뒤 영상으로 구울 수 있습니다.</div>
+
+<div class="wrap">
+  <div>
+    <div id="view"><img id="bgimg" style="display:none"><canvas id="gl"></canvas></div>
+    <div class="btns">
+      <button id="bBg">🖼 배경 사진 넣기</button>
+      <button id="bBgClear">배경 지우기</button>
+      <button id="bPng">📸 PNG 저장</button>
+      <button id="bVideo">🎬 영상으로 굽기 (백그라운드)</button>
+    </div>
+    <input type="file" id="fBg" accept="image/*" style="display:none">
+    <div id="status"></div>
+  </div>
+
+  <div class="panel" id="panel"></div>
+</div>
+
+<script type="module">
+import * as THREE from "./lib/three.module.js";
+
+/* ============================================================
+   1) 캐릭터 정의 — 숫자를 바꾸면 생김새가 바뀝니다 (코드로 제어)
+   ============================================================ */
+const CH = {
+  color: { fur:"#f4dcae", ear:"#7e5636", line:"#4a3121", eye:"#33241a",
+           collar:"#ce4038", tag:"#f0c13b", nose:"#4a3121" },
+  head:  { r:0.95, sx:1.08, sy:0.94, sz:0.94, y:1.86 },
+  ears:  { rx:0.28, ry:0.50, rz:0.15, x:0.90, y:1.96, z:-0.02, tilt:20, darkRight:true },
+  eyes:  { r:0.13, x:0.33, y:1.90, z:1.0, gap:1.0 },   // z = 머리 표면에 붙는 정도(1=표면)
+  mouth: { w:0.30, y:1.66, z:1.0 },
+  body:  { rx:0.72, ry:0.72, rz:0.64, y:0.62 },
+  arms:  { r:0.20, len:0.44, x:0.70, y:0.78, swing:18 },
+  legs:  { rx:0.30, ry:0.22, rz:0.40, x:0.34, y:0.10 },
+  collar:{ r:0.56, tube:0.075, y:1.10 },
+  tag:   { r:0.17, y:0.92 },
+  outline: 0.045,          // 만화 느낌 외곽선 두께
+};
+
+/* 움직임 — 이름을 고르면 그 함수가 매 프레임 캐릭터를 움직입니다 */
+const MOTIONS = {
+  "가만히 (숨쉬기)": (P, t) => {
+    P.torso.position.y = Math.sin(t*1.6)*0.03;
+    P.torso.scale.set(1+Math.sin(t*1.6)*0.02, 1-Math.sin(t*1.6)*0.02, 1);
+    P.head.rotation.z = Math.sin(t*0.8)*0.05;
+    P.earL.rotation.z = 0.2 + Math.sin(t*1.7)*0.10;
+    P.earR.rotation.z = -0.2 - Math.sin(t*1.7+0.6)*0.11;
+  },
+  "손 흔들기": (P, t) => {
+    MOTIONS["가만히 (숨쉬기)"](P, t);
+    P.armR.rotation.z = -2.1 + Math.sin(t*9)*0.45;
+    P.head.rotation.z = Math.sin(t*3)*0.12;
+  },
+  "걷기 (제자리)": (P, t) => {
+    const w = t*6;
+    P.torso.position.y = Math.abs(Math.sin(w))*0.10;
+    P.torso.rotation.z = Math.sin(w)*0.05;
+    P.armL.rotation.x =  Math.sin(w)*0.9;
+    P.armR.rotation.x = -Math.sin(w)*0.9;
+    P.legL.position.z =  Math.sin(w)*0.28;
+    P.legR.position.z = -Math.sin(w)*0.28;
+    P.legL.position.y = Math.max(0, Math.sin(w))*0.14;
+    P.legR.position.y = Math.max(0,-Math.sin(w))*0.14;
+    P.earL.rotation.z = 0.2 + Math.sin(w)*0.2;
+    P.earR.rotation.z = -0.2 - Math.sin(w)*0.2;
+  },
+  "점프": (P, t) => {
+    const c = (t*1.3) % 1, h = Math.sin(c*Math.PI);
+    P.torso.position.y = h*0.75;
+    P.torso.scale.set(1+(1-h)*0.10*(c<0.1||c>0.9?1:0), 1-(1-h)*0.12*(c<0.1||c>0.9?1:0), 1);
+    P.armL.rotation.z =  h*1.5; P.armR.rotation.z = -h*1.5;
+    P.earL.rotation.z = 0.2 + h*0.7; P.earR.rotation.z = -0.2 - h*0.7;
+  },
+  "두리번거리기": (P, t) => {
+    MOTIONS["가만히 (숨쉬기)"](P, t);
+    P.head.rotation.y = Math.sin(t*1.1)*0.75;
+    P.head.rotation.x = Math.sin(t*0.7)*0.12;
+  },
+  "빙글 돌기": (P, t) => {
+    MOTIONS["가만히 (숨쉬기)"](P, t);
+    P.root.rotation.y = t*1.6;
+  },
+};
+
+/* 장면 배치 — 배경 위 어디에, 얼마나 크게 */
+const SCENE = { x:0, y:0, scale:1, turn:20, tiltCam:6, motion:"가만히 (숨쉬기)",
+                speed:1, shadow:0.35, light:1.0 };
+
+/* ============================================================
+   2) 3D 모델 만들기 — 전부 코드로 조립 (외곽선은 뒤집힌 껍질)
+   ============================================================ */
+const view = document.getElementById("view");
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("gl"),
+                                           alpha:true, antialias:true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(28, 16/9, 0.1, 100);
+scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+const key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(2.5, 4, 3); scene.add(key);
+const rim = new THREE.DirectionalLight(0xffe6bb, 0.35); rim.position.set(-3, 2, -2); scene.add(rim);
+
+// 3단 셀 셰이딩 그라데이션
+const grad = new THREE.DataTexture(new Uint8Array([
+  150,150,150,255,  215,215,215,255,  255,255,255,255]), 3, 1);   // RGBA 4바이트씩
+grad.needsUpdate = true; grad.minFilter = grad.magFilter = THREE.NearestFilter;
+
+const P = {};            // 파트 모음 (움직임 함수가 이걸 만집니다)
+let root;
+
+function toon(hex) {
+  const m = new THREE.MeshToonMaterial({ color: new THREE.Color(hex) });
+  m.gradientMap = grad; return m;
+}
+function outlineOf(mesh, w) {
+  const o = new THREE.Mesh(mesh.geometry,
+    new THREE.MeshBasicMaterial({ color:new THREE.Color(CH.color.line), side:THREE.BackSide }));
+  o.scale.setScalar(1 + w);
+  mesh.add(o); return o;
+}
+function ball(rx, ry, rz, colorHex, seg=32) {
+  const g = new THREE.SphereGeometry(1, seg, seg*0.75);
+  const m = new THREE.Mesh(g, toon(colorHex));
+  m.scale.set(rx, ry, rz);
+  outlineOf(m, CH.outline / Math.max(rx, ry, rz));
+  return m;
+}
+
+function build() {
+  if (root) scene.remove(root);
+  root = new THREE.Group(); scene.add(root);
+  const C = CH.color;
+
+  const torso = new THREE.Group(); root.add(torso); P.root = root; P.torso = torso;
+
+  // 몸통
+  const body = ball(CH.body.rx, CH.body.ry, CH.body.rz, C.fur);
+  body.position.y = CH.body.y; torso.add(body);
+
+  // 다리(발)
+  P.legL = new THREE.Group(); P.legR = new THREE.Group(); torso.add(P.legL, P.legR);
+  [[-1, P.legL], [1, P.legR]].forEach(([s, g]) => {
+    const f = ball(CH.legs.rx, CH.legs.ry, CH.legs.rz, C.fur, 24);
+    f.position.set(s*CH.legs.x, CH.legs.y, 0.06); g.add(f);
+  });
+
+  // 팔 (어깨를 축으로 회전)
+  P.armL = new THREE.Group(); P.armR = new THREE.Group();
+  P.armL.position.set(-CH.arms.x, CH.arms.y, 0);
+  P.armR.position.set( CH.arms.x, CH.arms.y, 0);
+  torso.add(P.armL, P.armR);
+  [[-1, P.armL], [1, P.armR]].forEach(([s, g]) => {
+    const a = ball(CH.arms.r, CH.arms.len, CH.arms.r, C.fur, 24);
+    a.position.y = -CH.arms.len*0.75; g.add(a);
+    g.rotation.z = s * -CH.arms.swing * Math.PI/180;
+  });
+
+  // 목줄 + 이름표
+  const col = new THREE.Mesh(new THREE.TorusGeometry(CH.collar.r, CH.collar.tube, 12, 40), toon(C.collar));
+  col.rotation.x = Math.PI/2; col.position.y = CH.collar.y; col.scale.set(1, 1, 0.86); torso.add(col);
+  const tag = new THREE.Mesh(new THREE.CylinderGeometry(CH.tag.r, CH.tag.r, 0.07, 24), toon(C.tag));
+  tag.rotation.x = Math.PI/2; tag.position.set(0, CH.tag.y, CH.body.rz*0.92); torso.add(tag);
+  outlineOf(tag, 0.05);
+
+  // 머리
+  P.head = new THREE.Group(); P.head.position.y = CH.head.y; torso.add(P.head);
+  const head = ball(CH.head.r*CH.head.sx, CH.head.r*CH.head.sy, CH.head.r*CH.head.sz, C.fur, 40);
+  P.head.add(head);
+
+  // 귀 (뿌리에서 회전 → 펄럭임)
+  P.earL = new THREE.Group(); P.earR = new THREE.Group();
+  P.earL.position.set(-CH.ears.x, CH.ears.y - CH.head.y, CH.ears.z);
+  P.earR.position.set( CH.ears.x, CH.ears.y - CH.head.y, CH.ears.z);
+  P.head.add(P.earL, P.earR);
+  [[-1, P.earL, false], [1, P.earR, CH.ears.darkRight]].forEach(([s, g, dark]) => {
+    const e = ball(CH.ears.rx, CH.ears.ry, CH.ears.rz, dark ? C.ear : C.fur, 24);
+    e.position.y = -CH.ears.ry*0.8;
+    e.rotation.z = s * CH.ears.tilt * Math.PI/180;
+    g.add(e);
+    g.rotation.z = s * 0.2;
+  });
+
+  // 눈 · 입 — 머리 표면 위로 정확히 올라오도록 z를 계산해서 붙인다
+  const HX = CH.head.r*CH.head.sx, HY = CH.head.r*CH.head.sy, HZ = CH.head.r*CH.head.sz;
+  const surfaceZ = (x, y) => {
+    const k = 1 - (x/HX)**2 - (y/HY)**2;
+    return HZ * Math.sqrt(Math.max(0.05, k));
+  };
+  [[-1, "eyeL"], [1, "eyeR"]].forEach(([s, k]) => {
+    const e = new THREE.Mesh(new THREE.SphereGeometry(CH.eyes.r, 20, 16),
+                             new THREE.MeshBasicMaterial({ color:new THREE.Color(C.eye) }));
+    const ex = s*CH.eyes.x*CH.eyes.gap, ey = CH.eyes.y - CH.head.y;
+    e.position.set(ex, ey, surfaceZ(ex, ey) * CH.eyes.z + CH.eyes.r*0.35);
+    e.scale.set(0.9, 1.2, 0.55);
+    P.head.add(e); P[k] = e;
+  });
+  const mouth = new THREE.Mesh(
+    new THREE.TorusGeometry(CH.mouth.w*0.5, 0.032, 8, 24, Math.PI),
+    new THREE.MeshBasicMaterial({ color:new THREE.Color(C.line) }));
+  mouth.rotation.set(0, 0, Math.PI);
+  const my = CH.mouth.y - CH.head.y;
+  mouth.position.set(0, my, surfaceZ(0, my) * CH.mouth.z + 0.03);
+  P.head.add(mouth);
+
+  // 그림자 (배경에 놓인 느낌)
+  P.shadow = new THREE.Mesh(new THREE.CircleGeometry(0.95, 32),
+    new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:SCENE.shadow }));
+  P.shadow.rotation.x = -Math.PI/2; P.shadow.position.y = -0.12; root.add(P.shadow);
+}
+build();
+
+/* ============================================================
+   3) 매 프레임 — 시간 t를 넣으면 그 순간의 포즈가 됩니다
+   ============================================================ */
+function resetPose() {
+  ["torso","head","armL","armR","legL","legR","earL","earR","root"].forEach(k => {
+    const o = P[k]; if (!o) return;
+    o.rotation.set(0,0,0);
+    if (k !== "armL" && k !== "armR") o.position.set(o.position.x, k==="head"?CH.head.y:0, o.position.z);
+    o.scale.set(1,1,1);
+  });
+  P.head.position.y = CH.head.y;
+  P.armL.rotation.z = CH.arms.swing*Math.PI/180;
+  P.armR.rotation.z = -CH.arms.swing*Math.PI/180;
+  P.legL.position.set(0,0,0); P.legR.position.set(0,0,0);
+  P.earL.rotation.z = 0.2; P.earR.rotation.z = -0.2;
+}
+function setTime(t) {
+  resetPose();
+  (MOTIONS[SCENE.motion] || MOTIONS["가만히 (숨쉬기)"])(P, t * SCENE.speed);
+  root.rotation.y += SCENE.turn * Math.PI/180;
+  root.position.set(SCENE.x, SCENE.y, 0);
+  root.scale.setScalar(SCENE.scale);
+  P.shadow.material.opacity = SCENE.shadow;
+  P.shadow.position.y = -0.12 + SCENE.y;
+  P.shadow.scale.setScalar(SCENE.scale);
+  key.intensity = 0.9 * SCENE.light;
+  scene.children[0].intensity = 0.85 * SCENE.light;
+  camera.position.set(0, 1.35, 8.2);
+  camera.rotation.set(-SCENE.tiltCam*Math.PI/180, 0, 0);
+  camera.position.y = 1.35 + SCENE.tiltCam*0.06;
+}
+function fit() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+addEventListener("resize", fit); fit();
+
+let playing = true, t0 = performance.now(), tNow = 0;
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (playing) tNow = (now - t0)/1000;
+  setTime(tNow);
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(loop);
+
+/* ============================================================
+   4) 조절판
+   ============================================================ */
+const panel = document.getElementById("panel");
+const KO = { r:"크기", rx:"가로", ry:"세로", rz:"두께", sx:"가로비", sy:"세로비", sz:"앞뒤비",
+             x:"좌우", y:"높이", z:"앞뒤", tilt:"기울기", gap:"눈 간격", w:"너비",
+             len:"길이", swing:"벌린 각", tube:"굵기", darkRight:"오른쪽 귀 갈색",
+             outline:"외곽선", scale:"크기", turn:"몸 방향", tiltCam:"카메라 각도",
+             speed:"속도", shadow:"그림자", light:"밝기" };
+const RANGE = { r:[0.05,2], rx:[0.05,2], ry:[0.05,2], rz:[0.05,2], sx:[0.4,1.8], sy:[0.4,1.8],
+                sz:[0.4,1.8], x:[-3,3], y:[-3,3], z:[-2,2], tilt:[-90,90], gap:[0.3,2],
+                w:[0.05,1], len:[0.05,1.5], swing:[-60,60], tube:[0.01,0.3], outline:[0,0.2],
+                scale:[0.2,3], turn:[-180,180], tiltCam:[-20,40], speed:[0,3],
+                shadow:[0,0.8], light:[0.2,2] };
+function ctl(parent, label, obj, key, after) {
+  const v = obj[key], row = document.createElement("div"); row.className = "ctl";
+  row.innerHTML = `<label>${label}</label>`;
+  if (typeof v === "boolean") {
+    const c = document.createElement("input"); c.type="checkbox"; c.checked=v;
+    c.onchange = () => { obj[key]=c.checked; after&&after(); }; row.appendChild(c);
+  } else if (typeof v === "string" && v.startsWith("#")) {
+    const c = document.createElement("input"); c.type="color"; c.value=v;
+    c.oninput = () => { obj[key]=c.value; after&&after(); }; row.appendChild(c);
+  } else {
+    const [lo,hi] = RANGE[key] || [-3,3];
+    const rg=document.createElement("input"); rg.type="range"; rg.min=lo; rg.max=hi;
+    rg.step=(hi-lo)/200; rg.value=v;
+    const nb=document.createElement("input"); nb.type="number"; nb.value=v; nb.step=(hi-lo)/200;
+    const set=val=>{ obj[key]=parseFloat(val); rg.value=val; nb.value=(+val).toFixed(3); after&&after(); };
+    rg.oninput=()=>set(rg.value); nb.oninput=()=>set(nb.value);
+    row.append(rg, nb);
+  }
+  parent.appendChild(row);
+}
+function h2(txt){ const h=document.createElement("h2"); h.textContent=txt; panel.appendChild(h); }
+
+h2("🎬 장면");
+const mSel = document.createElement("select");
+mSel.style.cssText = "width:100%;padding:6px;border-radius:8px;background:#241f1a;color:#EFE6D8;border:1px solid #38312a;margin-bottom:8px";
+Object.keys(MOTIONS).forEach(k => { const o=document.createElement("option"); o.value=o.textContent=k; mSel.appendChild(o); });
+mSel.onchange = () => SCENE.motion = mSel.value;
+panel.appendChild(mSel);
+["x","y","scale","turn","tiltCam","speed","shadow","light"].forEach(k => ctl(panel, KO[k]||k, SCENE, k));
+
+h2("🎨 색"); Object.keys(CH.color).forEach(k => ctl(panel, k, CH.color, k, build));
+ctl(panel, KO.outline, CH, "outline", build);
+[["머리","head"],["귀","ears"],["눈","eyes"],["입","mouth"],["몸통","body"],["팔","arms"],["다리","legs"],["목줄","collar"],["이름표","tag"]]
+  .forEach(([ko,key]) => { h2(ko); Object.keys(CH[key]).forEach(k => ctl(panel, KO[k]||k, CH[key], k, build)); });
+
+const btns = document.createElement("div"); btns.className="btns";
+btns.innerHTML = `<button id="bPlay" class="on">⏸ 정지</button><button id="bSave">💾 JSON 저장</button><button id="bLoad">📂 불러오기</button>`;
+panel.appendChild(btns);
+const ta = document.createElement("textarea"); panel.appendChild(ta);
+document.getElementById("bPlay").onclick = e => {
+  playing=!playing; if(playing) t0=performance.now()-tNow*1000;
+  e.target.textContent = playing?"⏸ 정지":"▶ 재생"; e.target.classList.toggle("on", playing);
+};
+document.getElementById("bSave").onclick = () => { ta.value = JSON.stringify({CH,SCENE},null,1); ta.select(); };
+document.getElementById("bLoad").onclick = () => {
+  try { const o=JSON.parse(ta.value);
+    if(o.CH) Object.assign(CH,o.CH); if(o.SCENE) Object.assign(SCENE,o.SCENE); build();
+  } catch(e){ alert("JSON 오류: "+e.message); }
+};
+
+/* ============================================================
+   5) 배경 / 저장 / 영상 굽기
+   ============================================================ */
+const st = m => document.getElementById("status").textContent = m;
+document.getElementById("bBg").onclick = () => document.getElementById("fBg").click();
+document.getElementById("fBg").onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  const img = document.getElementById("bgimg");
+  img.src = URL.createObjectURL(f); img.style.display="block";
+  st("배경을 넣었습니다. 캐릭터 위치·크기를 맞춰보세요.");
+};
+document.getElementById("bBgClear").onclick = () => {
+  const img=document.getElementById("bgimg"); img.removeAttribute("src"); img.style.display="none";
+};
+
+/* 배경 + 3D를 한 장으로 합성 */
+function composite(w, h) {
+  const c = document.createElement("canvas"); c.width=w; c.height=h;
+  const x = c.getContext("2d");
+  const img = document.getElementById("bgimg");
+  x.fillStyle = "#F3EDE2"; x.fillRect(0,0,w,h);
+  if (img.src && img.naturalWidth) {                    // object-fit: cover 와 동일하게
+    const s = Math.max(w/img.naturalWidth, h/img.naturalHeight);
+    const dw = img.naturalWidth*s, dh = img.naturalHeight*s;
+    x.drawImage(img, (w-dw)/2, (h-dh)/2, dw, dh);
+  }
+  x.drawImage(renderer.domElement, 0, 0, w, h);
+  return c;
+}
+document.getElementById("bPng").onclick = () => {
+  const c = composite(1280, 720);
+  const a = document.createElement("a"); a.download="character.png"; a.href=c.toDataURL("image/png"); a.click();
+};
+
+/* 실시간 재생 없이 프레임을 한 장씩 그려 서버로 보내고, 서버가 mp4로 굽는다 */
+document.getElementById("bVideo").onclick = async () => {
+  const secs = parseFloat(prompt("몇 초짜리 영상으로 만들까요?", "6") || "6");
+  if (!(secs > 0)) return;
+  await makeVideo(secs);
+};
+async function makeVideo(secs, fps = 30, W = 1280, H = 720) {
+  const total = Math.round(secs*fps);
+  const wasPlaying = playing; playing = false;
+  try {
+    const s = await (await fetch("/api/frames/start", { method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ name:"강아지_"+SCENE.motion, fps }) })).json();
+    let pending = null;
+    for (let i=0; i<total; i++) {
+      setTime(i/fps);
+      renderer.render(scene, camera);
+      // toBlob은 탭이 가려지면 콜백이 밀린다 → 동기(toDataURL)로 뽑고 업로드는 겹쳐서 진행
+      const durl = composite(W,H).toDataURL("image/jpeg", 0.92);
+      if (pending) await pending;
+      pending = fetch(`/api/frames/add?id=${s.id}&i=${i}&b64=1`, { method:"POST", body: durl });
+      if (i % 5 === 0) st(`🎞 프레임 그리는 중… ${i+1}/${total}`);
+    }
+    if (pending) await pending;
+    st("서버에서 영상으로 굽는 중…");
+    const d = await (await fetch("/api/frames/finish", { method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({ id:s.id, fps }) })).json();
+    while (true) {
+      await new Promise(r => setTimeout(r, 700));
+      const j = await (await fetch("/api/status/"+d.job)).json();
+      if (j.state === "error") throw new Error(j.error);
+      st(`⚙ ${j.note || "굽는 중"} (${j.progress||0}%)`);
+      if (j.state === "done") { st(`✅ 완성! 히스토리 › 동영상 탭에 "${j.filename}" 저장됨`); break; }
+    }
+  } catch (e) { st("⚠ " + e.message); }
+  playing = wasPlaying; t0 = performance.now() - tNow*1000;
+}
+
+/* ============================================================
+   6) 바깥(콘솔·다른 코드)에서도 캐릭터를 제어할 수 있게 열어둔다
+      예) CharStudio.SCENE.motion = "걷기 (제자리)"
+          CharStudio.CH.color.fur = "#ffd9a0"; CharStudio.rebuild();
+          await CharStudio.makeVideo(8);            // 8초짜리 mp4로 굽기
+          CharStudio.MOTIONS["내 동작"] = (P,t)=>{ P.head.rotation.y = Math.sin(t*3); };
+   ============================================================ */
+window.CharStudio = {
+  CH, SCENE, MOTIONS, parts: P, three: THREE, scene, camera, renderer,
+  rebuild: build, setTime, composite, makeVideo,
+  async exportGLB(name = "puppy") {                 // 표준 3D 파일로 내보내기
+    const { GLTFExporter } = await import("./lib/GLTFExporter.js");
+    const glb = await new GLTFExporter().parseAsync(root, { binary: true });
+    const a = document.createElement("a");
+    a.download = name + ".glb";
+    a.href = URL.createObjectURL(new Blob([glb], { type: "model/gltf-binary" }));
+    a.click();
+  },
+};
+</script>
+</body>
+</html>

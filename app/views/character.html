@@ -1,0 +1,51 @@
+<div class="card">
+  <!-- ══ 머리줄 ══
+       왼쪽에 '무엇을 관리하는가'(시리즈), 오른쪽에 '가끔 하는 일'(창으로 뜬다).
+       도우미 판을 늘 펼쳐 두면 정작 자산 목록이 아래로 밀린다. -->
+  <div class="charRow" style="align-items:center; flex-wrap:wrap; gap:8px">
+    <h2 style="margin:0">🎨 자산</h2>
+    <span class="hint">📚</span>
+    <select id="agGroup" style="max-width:200px" title="이 시리즈에서 쓸 수 있는 자산만 봅니다"></select>
+    <span class="hint" id="agInfo">읽는 중…</span>
+    <span style="flex:1"></span>
+    <button id="btnBulk" type="button"
+            title="파일 여러 개를 끌어다 놓고 시리즈까지 한 번에 정합니다">📥 한 번에 올리기</button>
+    <button class="ghost small" id="btnNeeds" type="button"
+            title="대본이 부르는데 아직 없는 그림">📦 부족한 그림 <span id="needBadge"></span></button>
+    <button class="ghost small" id="btnTags" type="button">🏷 태그 정리</button>
+    <button class="ghost small" id="btnSeries" type="button">📚 시리즈 옮기기</button>
+  </div>
+  <div class="hint" style="margin:6px 0 12px">
+    대본에 적은 이름과 <b>같은 이름</b>으로 저장하면 그 그림·소리가 곧바로 쓰입니다.
+    아직 없는 것은 코드로 그려 두므로 영상은 지금도 나옵니다.
+    <span class="hint">(영상 굽기는 📜 스토리·🏠 작업실에서 합니다)</span>
+  </div>
+
+  <!-- ══ 1급 종류 — 관리 대상이 맨 앞에 온다 ══ -->
+  <div id="chSubtabs" class="subtabs">
+    <button class="subtab on" data-sub="manage" type="button">🐕 캐릭터 <span class="hint" data-수="캐릭터"></span></button>
+    <button class="subtab" data-sub="bg" type="button">🏞 배경 <span class="hint" data-수="배경"></span></button>
+    <button class="subtab" data-sub="music" type="button">🎵 음악 <span class="hint" data-수="음악"></span></button>
+    <button class="subtab" data-sub="bits" type="button">🧩 조각·장면 <span class="hint" data-수="조각"></span></button>
+    <!-- 코드가 그려 주는 것들 — 파일이 없어 개수를 셀 수 없으니 갈래 안에서 센다 -->
+    <button class="subtab" data-sub="fx" type="button"
+            title="효과·소품·상태·표정·전환·자막 모양 — 그림 파일 없이 코드가 그려 주는 것들"
+            >🎬 연출 <span class="hint">코드로 그림</span></button>
+  </div>
+
+  <!-- ══ 캐릭터 안의 곁가지 — 표정·부위와 3D 색칠은 캐릭터를 꾸미는 일이다 ══ -->
+  <div id="chKid" class="subtabs" style="margin:-4px 0 10px; padding-left:10px;
+       border-left:2px solid #2f2a3a">
+    <button class="subtab on" data-kid="manage" type="button">📋 목록</button>
+    <button class="subtab" data-kid="face" type="button">😊 표정·부위</button>
+    <button class="subtab" data-kid="paint" type="button">🎨 3D 색칠</button>
+  </div>
+
+  <div id="chPane_manage" class="chPane"></div>
+  <div id="chPane_face" class="chPane" style="display:none"></div>
+  <div id="chPane_paint" class="chPane" style="display:none"></div>
+  <div id="chPane_bg" class="chPane" style="display:none"></div>
+  <div id="chPane_music" class="chPane" style="display:none"></div>
+  <div id="chPane_bits" class="chPane" style="display:none"></div>
+  <div id="chPane_fx" class="chPane" style="display:none"></div>
+</div>

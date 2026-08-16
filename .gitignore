@@ -1,0 +1,48 @@
+# ── 심심 공작소 ──
+# 올리는 것은 **프로그램**뿐이다. 모델·영상·개인 자산은 올리지 않는다.
+# (전체 45GB 가운데 코드는 4MB 안팎이다)
+
+# ══ 아주 큰 것 — 저장소에 들어가면 안 된다 ══
+ComfyUI_windows_portable/     # 45GB · 생성 엔진 통째 (각자 따로 설치)
+downloads/                    # 3.5GB · 받아 둔 것들
+backups/                      # 387MB · 백업
+cloudflared.exe               # 실행 파일 (각자 받는다)
+
+# ══ 내려받은 모델 — 코드가 아니다 ══
+app/whisper/                  # 538MB
+app/tagger/                   # 361MB
+app/lib/                      # 외부 라이브러리 묶음
+
+# ══ 만들어지는 것 ══
+app/_frames/                  # 굽는 중 임시 그림
+app/_facetest/                # 얼굴 찾기 시험판 (4,500장)
+app/__pycache__/
+**/__pycache__/
+*.pyc
+app/thumbs/                   # 미리보기 그림 (자동 생성)
+app/trans_previews/
+app/sheets/                   # 컷 시트 (자동 생성)
+
+# ══ 개인 작업물 — 사람마다 다르다 ══
+app/characters/               # 올린 캐릭터 그림
+app/backgrounds/              # 올린 배경 그림
+app/audio/                    # 올린 음악
+app/music_projects/
+app/projects/                 # 만든 프로젝트·대본
+app/groups/
+app/scenes/
+app/prefabs/
+app/shapes/
+
+# ══ 비밀 ══
+.env
+*.secret
+비밀번호.txt
+
+# ══ 그 밖 ══
+*.log
+*.tmp
+Thumbs.db
+desktop.ini
+새 폴더/
+file/

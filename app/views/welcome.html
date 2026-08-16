@@ -1,0 +1,50 @@
+<!-- 🏡 홈 — 처음 여는 화면.
+     무엇을 하는 프로그램인지, 어디로 가면 되는지를 한눈에 보여 준다. -->
+<div id="hoWrap" style="max-width:1080px; margin:0 auto; padding:8px 0 40px">
+
+  <!-- 간판 -->
+  <div style="position:relative; border-radius:20px; overflow:hidden;
+              background:linear-gradient(160deg,#1b1826 0%,#141019 60%,#191426 100%);
+              padding:34px 30px 30px; margin-bottom:18px">
+    <!-- 가운데에서 조용히 도는 무늬 -->
+    <canvas id="hoOrb" style="position:absolute; right:-40px; top:50%; transform:translateY(-50%);
+            width:360px; height:360px; opacity:.85; pointer-events:none"></canvas>
+    <div style="position:relative">
+      <div style="font-size:34px; font-weight:800; letter-spacing:-.5px">
+        심심 <span style="color:var(--accent,#8b7dff)">공작소</span>
+      </div>
+      <div class="hint" style="font-size:15px; margin-top:8px; max-width:560px; line-height:1.7">
+        글을 쓰면 영상이 됩니다.<br>
+        그림이 없어도 <b>배경·캐릭터·소품을 코드가 그려 주므로</b> 대본만으로 바로 나옵니다.
+      </div>
+      <div class="charRow" style="margin-top:18px; gap:8px">
+        <button id="hoStart" style="padding:11px 20px; font-size:14px">🏠 작업실로 들어가기</button>
+        <button class="ghost" id="hoGuide" type="button">📖 대본 문법 보기</button>
+      </div>
+      <div class="charRow" id="hoStats" style="gap:16px; margin-top:20px; flex-wrap:wrap"></div>
+    </div>
+  </div>
+
+  <!-- 하는 일 세 걸음 -->
+  <div class="mkCols" style="grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px">
+    <div class="vitem" style="flex-direction:column; align-items:flex-start; gap:6px; padding:16px">
+      <div style="font-size:22px">①</div><b style="font-size:14px">대본을 씁니다</b>
+      <span class="hint" style="line-height:1.6">클로드에게 문법을 주고 받아 오거나,
+        작업실에서 직접 씁니다. 자막 한 줄이 컷 하나입니다.</span></div>
+    <div class="vitem" style="flex-direction:column; align-items:flex-start; gap:6px; padding:16px">
+      <div style="font-size:22px">②</div><b style="font-size:14px">그림을 채웁니다</b>
+      <span class="hint" style="line-height:1.6">없으면 코드가 그립니다.
+        마음에 안 드는 것만 올리거나 만들어 바꾸면 됩니다.</span></div>
+    <div class="vitem" style="flex-direction:column; align-items:flex-start; gap:6px; padding:16px">
+      <div style="font-size:22px">③</div><b style="font-size:14px">굽습니다</b>
+      <span class="hint" style="line-height:1.6">편마다 하나씩(쇼츠), 또는 전부 이어
+        한 편으로(롱폼). 30초 영상이 5~10초면 나옵니다.</span></div>
+  </div>
+
+  <!-- 탭 안내 -->
+  <h3 class="mkHead" style="margin-bottom:8px">어디로 갈까요</h3>
+  <div id="hoTabs" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+       gap:12px"></div>
+
+  <div class="hint" id="hoFoot" style="text-align:center; margin-top:26px; line-height:1.8"></div>
+</div>

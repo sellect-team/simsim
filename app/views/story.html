@@ -1,0 +1,60 @@
+<div class="charRow">
+  <select id="stDoc" style="min-width:180px"><option value="">새 대본</option></select>
+  <input id="stName" placeholder="대본 이름" style="width:150px">
+  <button class="ghost small" id="stSave" type="button">💾 저장</button>
+  <button class="ghost small" id="stMusic" type="button" title="Suno 등에 붙여넣을 음악 프롬프트를 복사합니다">🎵 Suno용 복사</button>
+  <button class="ghost small" id="stAssets" type="button">📦 필요한 그림</button>
+  <button id="stBake">🎬 굽기</button>
+  <span class="hint" id="stInfo" style="align-self:center"></span>
+</div>
+
+<div class="mkCols" style="margin-top:10px; grid-template-columns:1.1fr 1fr">
+  <div>
+    <h3 class="mkHead">📜 대본 <span class="hint">— 이 글이 곧 영상입니다</span></h3>
+    <textarea id="stText" spellcheck="false" style="width:100%; height:420px; font-family:
+      Consolas,'D2Coding',monospace; font-size:13px; line-height:1.65; white-space:pre;
+      background:#191720; color:#e8e2d8; border-radius:12px; padding:12px"></textarea>
+    <div id="stErr" class="hint" style="min-height:18px; color:#ff9c8a"></div>
+    <div class="hint">
+      <b>시간 규칙</b> — <code>자막</code>과 <code>대기</code>만 시간을 밉니다. 자막 한 줄이 컷 하나입니다.<br>
+      <b>지시</b> — <code>장면 배경이름 전환:페이드 뒤:하늘 앞:풀숲</code> ·
+      <code>이름 등장 왼쪽 크기:0.6</code> · <code>이름 이동 가운데 2초</code> ·
+      <code>이름 표정 happy</code> · <code>이름 동작 bounce</code> · <code>이름 눈물 roll</code> ·
+      <code>효과 불꽃 위치:0.5,0.7</code> · <code>카메라 줌인 2초</code> ·
+      <code>카메라 흔들기 0.4초</code> · <code>자막 "글" 효과:반짝임 소리:톡</code>
+    </div>
+  </div>
+
+  <div>
+    <h3 class="mkHead">🎬 미리보기
+      <span class="hint" id="stSize" title="굽으면 나올 실제 크기">—</span>
+    </h3>
+    <!-- 칸 크기는 story.js 의 fit() 이 대본의 `비율` 에 맞춰 직접 정한다.
+         (여기서 aspect-ratio 를 못 박으면 세로 영상이 옆으로 퍼진다) -->
+    <div style="display:flex; justify-content:center">
+      <div id="stStage" style="position:relative; width:100%; height:460px;
+           border-radius:14px; overflow:hidden; background:#0f0d14">
+        <canvas id="stCanvas" style="position:absolute; inset:0; width:100%; height:100%;
+                display:block"></canvas>
+      </div>
+    </div>
+    <div class="charRow" style="justify-content:center">
+      <button class="ghost small" id="stPlay" type="button">▶ 재생</button>
+      <button class="ghost small" id="stStop" type="button">⏹ 정지</button>
+      <span class="hint" id="stTime">0.0 / 0.0초</span>
+    </div>
+    <input type="range" id="stSeek" min="0" max="1000" value="0" style="width:100%">
+
+    <h3 class="mkHead" style="margin-top:12px">🎞 컷 (자막 한 줄 = 컷 하나)</h3>
+    <div id="stShots" class="vlist" style="max-height:220px; overflow-y:auto"></div>
+    <h3 class="mkHead" style="margin-top:14px">🌙 일괄 굽기 <span class="hint" id="stQueueInfo"></span></h3>
+    <div class="hint" style="margin-bottom:6px">저장한 대본을 골라 한꺼번에 굽습니다. 이 탭만 열어 두면 됩니다.</div>
+    <div id="stBatchList" class="vlist" style="max-height:130px; overflow-y:auto"></div>
+    <div class="charRow">
+      <button class="ghost small" id="stBatchRun" type="button">🌙 고른 대본 전부 굽기</button>
+      <button class="ghost small" id="stBatchStop" type="button">⏹ 멈추기</button>
+    </div>
+    <div id="stQueue" class="vlist" style="max-height:150px; overflow-y:auto"></div>
+    <div id="stStatus" class="hint" style="text-align:center; min-height:18px; margin-top:8px; white-space:pre-wrap"></div>
+  </div>
+</div>

@@ -1,0 +1,16 @@
+<!-- 🎬 연출 — 코드가 그려 주는 것들을 눈으로 보는 곳.
+     그림 파일이 없어도 되는 재료들이라 어디에도 '목록'이 없었고,
+     그래서 있는 줄도 모르고 안 쓰였다. 여기서 **실제로 움직이는 모습**을 보여 준다. -->
+
+<div class="charRow" style="align-items:center; gap:8px; flex-wrap:wrap">
+  <input id="fxFind" placeholder="🔍 이름으로 찾기" style="max-width:220px">
+  <span class="hint">눌러서 대본에 적을 글을 복사합니다</span>
+  <span style="flex:1"></span>
+  <label class="hint" style="display:inline-flex; align-items:center; gap:5px; margin:0; cursor:pointer">
+    <input type="checkbox" id="fxPlay" checked style="width:auto; margin:0"> 움직이기</label>
+  <span class="hint" id="fxInfo"></span>
+</div>
+
+<div id="fxKinds" class="subtabs" style="margin:8px 0 4px; flex-wrap:wrap"></div>
+
+<div id="fxBody"></div>

@@ -1,0 +1,31 @@
+<div class="hint" style="margin-bottom:10px">
+  다시 쓰는 <b>이야기 토막</b>을 모아 둡니다.
+  <b>조각</b>은 대본 몇 줄(인사·회상·엔딩 등)이고, <b>장면</b>은 예전 영상 만들기에서 저장한 무대입니다.
+  캐릭터·배경이 <i>재료</i>라면 이것은 <i>반쯤 만든 것</i>입니다.
+</div>
+
+<!-- 🧩 조각 — 대본 토막. 대본에 `조각 <이름>` 이라고 쓰면 그 자리에 펼쳐진다. -->
+<div style="background:#1a1822; border-radius:12px; padding:12px; margin-bottom:14px">
+  <div class="charRow" style="align-items:center; flex-wrap:wrap; gap:8px">
+    <b style="font-size:14px">🧩 조각 — 대본 토막</b>
+    <span class="hint" id="pfInfo">읽는 중…</span>
+    <span style="flex:1"></span>
+    <input id="pfName" placeholder="조각 이름" style="max-width:150px; padding:4px 9px; font-size:12px">
+    <button class="ghost small" id="pfAdd" type="button">＋ 새 조각</button>
+  </div>
+  <div id="pfList" class="vlist" style="max-height:260px; overflow-y:auto; margin-top:8px"></div>
+</div>
+
+<!-- 🎞 장면 보관함 — 예전 것. 지우지 않고 여기 둔다 (이미 저장한 것이 있으므로) -->
+<div style="background:#1a1822; border-radius:12px; padding:12px">
+  <div class="charRow" style="align-items:center">
+    <b style="font-size:14px">🎞 장면 보관함</b>
+    <button class="ghost small" id="scRefresh" type="button">🔄</button>
+    <span class="hint" id="scCount"></span>
+    <span style="flex:1"></span>
+    <span class="hint">영상 만들기에서 <b>[💾 장면 저장]</b> 을 누르면 여기에 쌓입니다.</span>
+  </div>
+  <div id="scTagBar" class="tagBar" style="margin-top:8px"></div>
+  <div id="scList" class="poseGrid" style="margin-top:10px"></div>
+  <div id="scStatus" class="hint" style="text-align:center; min-height:18px; margin-top:8px"></div>
+</div>

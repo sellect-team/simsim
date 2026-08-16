@@ -1,0 +1,13 @@
+<div class="charRow" style="align-items:center; flex-wrap:wrap; gap:8px">
+  <button id="muPick" type="button">🎵 음악 올리기</button>
+  <input type="file" id="muFile" accept="audio/*" multiple style="display:none">
+  <input id="muFind" placeholder="이름·태그로 찾기" style="max-width:200px; padding:5px 10px; font-size:13px">
+  <span style="flex:1"></span>
+  <span class="hint" id="muStatus"></span>
+</div>
+<div class="hint" style="margin:8px 0 4px">
+  Suno 같은 데서 뽑은 배경 음악을 여기 두면 대본 맨 위에서
+  <code>음악: 이름</code> 으로 부릅니다 (파일 이름이 아니라 <b>여기 붙인 이름</b>).
+  <b>유튜브에 올릴 것이라면 라이선스가 없는 곡</b>만 넣으세요.
+</div>
+<div id="muList" class="vlist" style="margin-top:8px"></div>

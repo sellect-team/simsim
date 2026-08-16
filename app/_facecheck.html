@@ -1,0 +1,63 @@
+<!doctype html><meta charset="utf-8"><title>얼굴 찾기 점검</title>
+<body style="background:#191720;color:#eee;font-family:system-ui;padding:14px">
+<pre id="log" style="white-space:pre-wrap">확인 중…</pre>
+<script type="module">
+import { findFace } from "/p/js/char/facefind.js";
+const log = m => document.getElementById("log").textContent += "\n" + m;
+document.getElementById("log").textContent = "";
+
+const chars = (await (await fetch("/api/char/list")).json()).items || [];
+const load = u => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = u; });
+
+const S0 = await (await fetch("/api/frames/start", { method: "POST",
+  headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "_face", fps: 1 }) })).json();
+
+const shots = [];
+for (const c of chars) {
+  for (const role of Object.keys(c.poses || { front: 1 })) {
+    let img;
+    try { img = await load(`/api/char/sprite?id=${c.id}&role=${role}`); } catch { continue; }
+    const f = findFace(img);
+    shots.push({ name: `${c.name}·${role}`, img, f });
+    log(`${c.name} ${role} — 확신 ${(f.확신 * 100).toFixed(0)}%` +
+        (f.eyeL ? `  눈 (${f.eyeL.x.toFixed(2)},${f.eyeL.y.toFixed(2)}) (${f.eyeR.x.toFixed(2)},${f.eyeR.y.toFixed(2)})  입 (${f.mouth.x.toFixed(2)},${f.mouth.y.toFixed(2)})` : "  찾지 못함"));
+  }
+}
+
+/* 찾은 자리를 표시해 눈으로 확인 */
+const W = 240, H = 300, cols = 5;
+const rows = Math.ceil(shots.length / cols);
+const cv = document.createElement("canvas");
+cv.width = W * cols; cv.height = H * rows + 26;
+const x = cv.getContext("2d");
+x.fillStyle = "#faf7f2"; x.fillRect(0, 0, cv.width, cv.height);
+x.fillStyle = "#2b2119"; x.font = "700 15px system-ui";
+x.fillText("얼굴 찾기 결과 — 노랑=왼눈 주황=오른눈 분홍=입 초록=머리", 10, 18);
+shots.forEach((s, i) => {
+  const bx = (i % cols) * W, by = 26 + ((i / cols) | 0) * H;
+  x.save(); x.translate(bx, by);
+  x.strokeStyle = "#ddd"; x.strokeRect(0, 0, W, H);
+  const sc = Math.min((W - 16) / s.img.width, (H - 34) / s.img.height);
+  const dw = s.img.width * sc, dh = s.img.height * sc;
+  const ox = (W - dw) / 2, oy = 8;
+  x.drawImage(s.img, ox, oy, dw, dh);
+  const mark = (p, col) => {
+    if (!p) return;
+    x.strokeStyle = col; x.lineWidth = 2.5;
+    x.beginPath(); x.arc(ox + p.x * dw, oy + p.y * dh, Math.max(4, p.r * dw), 0, 7); x.stroke();
+    x.beginPath(); x.moveTo(ox + p.x * dw - 5, oy + p.y * dh); x.lineTo(ox + p.x * dw + 5, oy + p.y * dh);
+    x.moveTo(ox + p.x * dw, oy + p.y * dh - 5); x.lineTo(ox + p.x * dw, oy + p.y * dh + 5); x.stroke();
+  };
+  if (s.f.head) { x.strokeStyle = "#4ade80"; x.lineWidth = 1.6; x.beginPath();
+    x.arc(ox + s.f.head.x * dw, oy + s.f.head.y * dh, s.f.head.r * dw, 0, 7); x.stroke(); }
+  mark(s.f.eyeL, "#facc15"); mark(s.f.eyeR, "#fb923c"); mark(s.f.mouth, "#f472b6");
+  x.fillStyle = s.f.확신 > 0.5 ? "#1f7a3d" : "#a33";
+  x.font = "12px system-ui";
+  x.fillText(`${s.name}  ${(s.f.확신 * 100).toFixed(0)}%`, 8, H - 8);
+  x.restore();
+});
+document.body.appendChild(cv); cv.style.maxWidth = "100%";
+await fetch(`/api/frames/add?id=${S0.id}&i=0&b64=1`, { method: "POST", body: cv.toDataURL("image/png") });
+log("\n그림 저장 완료");
+document.title = "얼굴 점검 완료";
+</script>

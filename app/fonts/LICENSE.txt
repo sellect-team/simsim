@@ -1,0 +1,11 @@
+한글 손글씨/제목 글꼴 — 전부 SIL Open Font License 1.1 (자유 사용·상업적 이용 가능)
+출처: https://github.com/google/fonts
+
+개구 (Gaegu)            — 크레용/어린이 느낌, 본문·자막 추천
+나눔펜 (NanumPenScript)  — 손글씨 펜, 대사
+주아 (Jua)              — 동글동글 귀여운 제목
+도현 (DoHyeon)          — 또렷한 제목
+검은고딕 (BlackHanSans) — 강한 강조/숫자
+하이멜로디 (HiMelody)    — 부드러운 손글씨
+푸어스토리 (PoorStory)   — 삐뚤빼뚤 동화체
+고운도담 (GowunDodum)    — 단정한 본문

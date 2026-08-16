@@ -1,0 +1,76 @@
+<div class="card">
+    <h2>🎵 뮤직비주얼 — 음악에 맞춰 배경 입자가 두근거리고 가사대로 형상이 바뀝니다</h2>
+    <div class="hint" style="margin-bottom:12px">
+      음악을 올리면 저음(비트)을 실시간으로 감지해 입자가 확장·수축하고, 가사를 넣으면 구간마다
+      내용에 맞는 형상(뇌·별자리·바다 등)으로 자동 전환됩니다. 모두 이 PC 안에서 처리됩니다.
+    </div>
+    <div class="row" style="margin-top:0">
+      <button class="ghost" id="mvPick" type="button">🎵 음악 파일 선택</button>
+      <span class="hint" id="mvInfo" style="flex:2; align-self:center"></span>
+    </div>
+    <input type="file" id="mvFile" accept="audio/*" style="display:none">
+    <audio id="mvAudio" controls style="width:100%; margin-top:10px; display:none"></audio>
+
+    <div class="row">
+      <button class="ghost" id="mvASR" type="button">🎤 가사 자동 인식 (한국어·영어)</button>
+      <select id="mvModel" style="flex:1">
+        <option value="tiny">빠름 (정확도 낮음)</option>
+        <option value="base">보통</option>
+        <option value="small" selected>정확 (권장)</option>
+        <option value="medium">매우 정확 (느림)</option>
+      </select>
+    </div>
+    <div class="mvSplit">
+      <div class="mvPane">
+        <label style="margin-top:14px">📝 인식된 가사 전체 <span class="hint">(직접 수정 가능 · 비워두면 기본 순환)</span></label>
+        <textarea id="mvLyrics" rows="16" placeholder="예)
+밤하늘의 별을 바라보며
+너의 얼굴을 떠올려
+파도가 밀려오는 바다에서
+손을 잡고 걸었지"></textarea>
+      </div>
+      <div class="mvPane">
+        <label style="margin-top:14px">🎬 형상 전환 타임라인 <span class="hint">(읽기 전용 · 줄을 누르면 그 지점부터 재생)</span></label>
+        <!-- 비어 있을 때도 380px 를 차지하므로 왜 비었는지 말해 준다 -->
+        <div id="mvTimeline"><div class="hint" style="padding:22px 14px; text-align:center;
+             line-height:1.8">🎬<br>노래와 가사를 넣고 <b>[🎼 타임라인 만들기]</b> 를 누르면
+             구간이 여기에 줄줄이 나옵니다</div></div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:10px">
+      <div><label>형상 전환 주기 <span class="hint" id="mvStepHint">10초마다</span></label>
+        <div class="numRow">
+          <input type="range" id="mvStepR" min="2" max="60" step="1" value="10">
+          <input type="number" id="mvStep" min="1" max="120" step="0.5" value="10">
+          <span class="unit">초</span>
+        </div>
+      </div>
+      <div><label>비트 반응 강도 <span class="hint" id="mvSensHint">보통</span></label>
+        <div class="numRow">
+          <input type="range" id="mvSensR" min="0" max="100" step="1" value="50">
+          <input type="number" id="mvSens" min="0" max="100" step="1" value="50">
+          <span class="unit">/ 100</span>
+        </div>
+      </div>
+      <div><label>비트에 맞춰 흩뿌리기 <span class="hint" id="mvBurstHint">보통</span></label>
+        <div class="numRow">
+          <input type="range" id="mvBurstR" min="0" max="100" step="1" value="50">
+          <input type="number" id="mvBurst" min="0" max="100" step="1" value="50">
+          <span class="unit">/ 100</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <button class="ghost" id="mvPreview" style="flex:1">👁 렌더링 보기</button>
+      <button class="ghost" id="mvPlay" style="flex:1">▶ 재생하기</button>
+      <button id="mvBuild" style="flex:1.4">✨ 생성하기 (히스토리 저장)</button>
+      <button class="ghost small" id="mvStop" style="flex:0.5">⏹ 정지</button>
+    </div>
+    <div id="mvBarWrap" style="display:none; margin-top:10px">
+      <div style="height:10px; background:rgba(255,255,255,0.08); border-radius:6px; overflow:hidden">
+        <div id="mvBar" style="height:100%; width:0%; background:var(--color-electric-iris); transition:width .3s"></div>
+      </div>
+    </div>
+    <div id="mvStatus" class="hint" style="text-align:center; min-height:18px; margin-top:8px"></div>
+  </div>

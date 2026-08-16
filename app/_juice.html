@@ -1,0 +1,32 @@
+<!doctype html><meta charset="utf-8"><title>게임 연출 시험</title>
+<body style="background:#181820;color:#eee;font-family:system-ui;padding:14px">
+<div id="log"></div><div id="out"></div>
+<script type="module">
+import { StoryDoc } from "/p/js/story/doc.js";
+import { library } from "/p/js/story/assets.js";
+await library.refresh(true);
+const 개 = library.characters.find(c => c.name.includes("우리집"))?.name || "누렁이 강아지";
+const 시험 = [
+  ["눌림·늘림 (점프)", `장면 공원 잔디밭\n  ${개} 등장 가운데 크기:0.7\n  ${개} 점프 오른쪽 0.9초\n  대기 1.2초`, [0.05,0.2,0.45,0.75,0.95,1.1]],
+  ["상태 놀람 (한 줄)", `장면 공원 잔디밭\n  ${개} 등장 가운데 크기:0.7\n  ${개} 상태 놀람\n  대기 1.2초`, [0.02,0.1,0.25,0.5,0.8,1.1]],
+  ["카메라 기울이기+레터박스", `장면 밤바다\n  ${개} 등장 가운데 크기:0.6\n  카메라 기울이기 9 0.6초\n  카메라 레터박스 0.6초\n  대기 1.2초`, [0.05,0.25,0.5,0.8,1.1,1.4]],
+  ["흔들기 (트라우마)", `장면 공원 잔디밭\n  ${개} 등장 가운데 크기:0.7\n  카메라 흔들기 1초 세기:1.5\n  대기 1.2초`, [0.03,0.12,0.3,0.55,0.8,1.05]],
+];
+const W=118,H=210, out=document.getElementById("out");
+for (const [이름, 글, 때] of 시험) {
+  const doc = new StoryDoc(글, 이름); await doc.build(library);
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:3px;align-items:center;margin:6px 0";
+  const lab = document.createElement("div");
+  lab.style.cssText = "width:180px;font-size:13px"; lab.textContent = 이름;
+  row.appendChild(lab);
+  for (const t of 때) {
+    const c=document.createElement("canvas"); c.width=W; c.height=H; c.style.borderRadius="4px";
+    doc.stage.drawAt(c.getContext("2d"), {x:0,y:0,w:W,h:H}, t);
+    row.appendChild(c);
+  }
+  out.appendChild(row);
+}
+document.getElementById("log").textContent = `${시험.length}가지 · 시각별 6컷`;
+document.title="그림 완료";
+</script>

@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>강아지 캐릭터 스튜디오 (코드로 제어)</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: #FAF6EE; color: #5C4033;
+    font-family: "Pretendard", "Malgun Gothic", system-ui, sans-serif;
+  }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: #9a8straw; color: #9a8straw; }
+  .sub { color: #998572; margin-bottom: 18px; }
+  .wrap { display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap; }
+  #stage { background: #FAF6EE; border-radius: 20px; box-shadow: 0 6px 24px rgba(92,64,51,.10); }
+  .panel {
+    width: 380px; background: #fff; border-radius: 18px; padding: 16px 18px;
+    box-shadow: 0 6px 24px rgba(92,64,51,.10); max-height: 88vh; overflow-y: auto;
+  }
+  .panel h2 { font-size: 13px; margin: 14px 0 8px; color: #8a6b4f; letter-spacing: .3px; }
+  .panel h2:first-child { margin-top: 0; }
+  .ctl { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; }
+  .ctl label { width: 96px; color: #7a6553; flex-shrink: 0; }
+  .ctl input[type=range] { flex: 1; accent-color: #D14A44; }
+  .ctl input[type=number] { width: 58px; padding: 2px 4px; font-size: 12px; text-align: right;
+                            border: 1px solid #e3d8c8; border-radius: 6px; }
+  .ctl input[type=color] { width: 34px; height: 24px; padding: 0; border: 1px solid #e3d8c8; border-radius: 6px; }
+  .chk { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 3px 0; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  button {
+    padding: 8px 13px; font-size: 12.5px; font-weight: 600; border-radius: 999px; cursor: pointer;
+    border: 1px solid #e0d3c0; background: #fff; color: #6A4A31;
+  }
+  button.on { background: #D14A44; border-color: #D14A44; color: #fff; }
+  textarea { width: 100%; height: 120px; font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+             border: 1px solid #e3d8c8; border-radius: 10px; padding: 8px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>🐶 강아지 캐릭터 — 코드로 제어되는 캐릭터</h1>
+<div class="sub">
+  캐릭터가 그림 파일이 아니라 <b>숫자 하나하나가 들어 있는 객체(DOG)</b>로 정의돼 있습니다.
+  값을 바꾸면 생김새가 바뀌고, 움직임도 코드(<code>pose(t)</code>)로 만듭니다. JSON으로 저장·불러오기, SVG·PNG 내보내기가 됩니다.
+</div>
+
+<div class="wrap">
+  <canvas id="stage" width="440" height="520"></canvas>
+  <div class="panel" id="panel"></div>
+</div>
+
+<script>
+/* =====================================================================
+   1) 캐릭터 정의 — 이 객체가 캐릭터 그 자체입니다.
+      좌표는 캐릭터 중심(0,0) 기준. 이 값만 바꾸면 다른 강아지가 됩니다.
+   ===================================================================== */
+const DOG = {
+  color: {
+    fur:    "#F6DFB0",   // 몸통·머리 크림색
+    earDark:"#7E5636",   // 갈색 귀
+    line:   "#5E4126",   // 외곽선
+    eye:    "#3B2A1D",
+    collar: "#CE4038",
+    tag:    "#F0C13B",
+    tagMark:"#B0842A",
+  },
+  lineW: 5.6,
+
+  head:  { cx: 0,   cy: -68, rx: 82, ry: 72 },
+  earL:  { cx: -78, cy: -62, rx: 22, ry: 35, rot: -12, dark: false },
+  earR:  { cx: 82,  cy: -66, rx: 27, ry: 43, rot: 12,  dark: true  },
+  eyes:  { dx: 27,  cy: -64, rx: 8.5, ry: 10.5 },
+  mouth: { cy: -38, w: 23, h: 9.5, lw: 4 },
+
+  body:  { cx: 0, cy: 58, rx: 56, ry: 54 },
+  arms:  { dx: 53, cy: 50, rx: 17, ry: 25, rot: 12 },
+  feet:  { dx: 30, cy: 108, rx: 25, ry: 15 },
+  tail:  { show: false, x: 60, y: 60, len: 34, rot: -40, w: 9 },
+
+  collar:{ cy: -6, w: 74, sag: 12, th: 10 },
+  tag:   { cy: 18, r: 13 },
+};
+
+/* 움직임 스위치 — 켜고 끄면 애니메이션이 바뀝니다 */
+const MOTION = {
+  breathe: true,    // 숨쉬기 (몸이 살짝 부풀었다 줄었다)
+  blink:   true,    // 눈 깜빡임
+  earSway: true,    // 귀 흔들림
+  bob:     true,    // 위아래로 통통
+  wag:     false,   // 꼬리 흔들기 (꼬리 보이기 켜야 보임)
+  speed:   1.0,
+};
+
+/* =====================================================================
+   2) 움직임 — 시간 t(초)를 받아 '이번 프레임의 캐릭터'를 만들어 돌려줍니다.
+      캐릭터 원본은 건드리지 않고 복사본의 숫자만 조정합니다.
+   ===================================================================== */
+function pose(t) {
+  const D = structuredClone(DOG);
+  const s = MOTION.speed, w = t * s;
+  const A = {};                                   // 이번 프레임의 부가 정보
+
+  A.bob = MOTION.bob ? Math.sin(w * 2.2) * 5 : 0;             // 전체 상하 이동
+  if (MOTION.breathe) {                                        // 숨쉬기: 몸 크기
+    const b = Math.sin(w * 1.5);
+    D.body.ry += b * 2.4;  D.body.rx += b * 1.2;
+    D.head.cy += b * 1.2;
+  }
+  if (MOTION.blink) {                                          // 3.2초마다 0.13초 감음
+    const c = (w % 3.2);
+    if (c < 0.13) D.eyes.ry = Math.max(1.2, D.eyes.ry * 0.12);
+  }
+  if (MOTION.earSway) {                                        // 귀가 살랑살랑
+    D.earL.rot += Math.sin(w * 2.0) * 5;
+    D.earR.rot += Math.sin(w * 2.0 + 0.7) * 6;
+  }
+  A.wag = (MOTION.wag && D.tail.show) ? Math.sin(w * 9) * 22 : 0;
+  return { D, A };
+}
+
+/* =====================================================================
+   3) 그리기 — 위 숫자만 보고 캔버스에 그립니다. (SVG 내보내기도 같은 규칙)
+   ===================================================================== */
+function ell(ctx, x, y, rx, ry, rot, fill, D) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate((rot || 0) * Math.PI / 180);
+  ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (D) { ctx.lineWidth = D.lineW; ctx.strokeStyle = D.color.line; ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawDog(ctx, D, A) {
+  const C = D.color;
+  ctx.save();
+  ctx.translate(0, A.bob || 0);
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+
+  // 꼬리 (몸 뒤)
+  if (D.tail.show) {
+    ctx.save();
+    ctx.translate(D.tail.x, D.tail.y);
+    ctx.rotate((D.tail.rot + (A.wag || 0)) * Math.PI / 180);
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(D.tail.len * 0.7, -D.tail.len * 0.3, D.tail.len, -D.tail.len * 0.9);
+    ctx.lineWidth = D.tail.w + D.lineW; ctx.strokeStyle = C.line; ctx.stroke();
+    ctx.lineWidth = D.tail.w;           ctx.strokeStyle = C.fur;  ctx.stroke();
+    ctx.restore();
+  }
+
+  // 몸 → 팔 → 발 (머리보다 먼저 그려 머리가 위에 오게)
+  ell(ctx, D.body.cx, D.body.cy, D.body.rx, D.body.ry, 0, C.fur, D);
+  ell(ctx, -D.arms.dx, D.arms.cy, D.arms.rx, D.arms.ry, D.arms.rot, C.fur, D);
+  ell(ctx,  D.arms.dx, D.arms.cy, D.arms.rx, D.arms.ry, -D.arms.rot, C.fur, D);
+  ell(ctx, -D.feet.dx, D.feet.cy, D.feet.rx, D.feet.ry, 0, C.fur, D);
+  ell(ctx,  D.feet.dx, D.feet.cy, D.feet.rx, D.feet.ry, 0, C.fur, D);
+
+  // 목줄 + 이름표
+  const cw = D.collar.w / 2, cy = D.collar.cy;
+  ctx.beginPath();
+  ctx.moveTo(-cw, cy);
+  ctx.quadraticCurveTo(0, cy + D.collar.sag, cw, cy);
+  ctx.lineWidth = D.collar.th + D.lineW; ctx.strokeStyle = C.line;   ctx.stroke();
+  ctx.lineWidth = D.collar.th;           ctx.strokeStyle = C.collar; ctx.stroke();
+  ell(ctx, 0, D.tag.cy, D.tag.r, D.tag.r, 0, C.tag, D);
+  ctx.fillStyle = C.tagMark;                       // 발바닥 무늬
+  const r = D.tag.r;
+  ctx.beginPath(); ctx.ellipse(0, D.tag.cy + r * 0.24, r * 0.40, r * 0.31, 0, 0, 7); ctx.fill();
+  [[-0.40, -0.30], [0, -0.42], [0.40, -0.30]].forEach(([dx, dy]) => {
+    ctx.beginPath(); ctx.arc(r * dx, D.tag.cy + r * dy, r * 0.15, 0, 7); ctx.fill();
+  });
+
+  // 귀 (머리 뒤쪽 절반) → 머리 → 귀 앞자락
+  ell(ctx, D.earL.cx, D.earL.cy, D.earL.rx, D.earL.ry, D.earL.rot,
+      D.earL.dark ? C.earDark : C.fur, D);
+  ell(ctx, D.earR.cx, D.earR.cy, D.earR.rx, D.earR.ry, D.earR.rot,
+      D.earR.dark ? C.earDark : C.fur, D);
+  ell(ctx, D.head.cx, D.head.cy, D.head.rx, D.head.ry, 0, C.fur, D);
+  // 귀의 아래쪽 절반이 머리 위로 덮이도록 한 번 더 (머리에 가려진 부분만 잘라서)
+  [D.earL, D.earR].forEach(E => {
+    ctx.save();
+    ctx.beginPath();                               // 머리 바깥은 이미 그려졌으니 머리 안쪽만
+    ctx.ellipse(D.head.cx, D.head.cy, D.head.rx - D.lineW / 2, D.head.ry - D.lineW / 2, 0, 0, 7);
+    ctx.clip();
+    ell(ctx, E.cx, E.cy, E.rx, E.ry, E.rot, E.dark ? C.earDark : C.fur, D);
+    ctx.restore();
+  });
+
+  // 눈
+  ell(ctx, -D.eyes.dx, D.eyes.cy, D.eyes.rx, D.eyes.ry, 0, C.eye, null);
+  ell(ctx,  D.eyes.dx, D.eyes.cy, D.eyes.rx, D.eyes.ry, 0, C.eye, null);
+
+  // 입 (ω 모양)
+  const m = D.mouth, hw = m.w / 2;
+  ctx.beginPath();
+  ctx.moveTo(-hw, m.cy - m.h * 0.15);
+  ctx.quadraticCurveTo(-hw * 0.45, m.cy + m.h, 0, m.cy + m.h * 0.15);
+  ctx.quadraticCurveTo(hw * 0.45, m.cy + m.h, hw, m.cy - m.h * 0.15);
+  ctx.lineWidth = m.lw; ctx.strokeStyle = C.line; ctx.stroke();
+
+  ctx.restore();
+}
+
+/* =====================================================================
+   4) 실행 루프
+   ===================================================================== */
+const cv = document.getElementById("stage"), ctx = cv.getContext("2d");
+let playing = true, t0 = performance.now(), tNow = 0;
+function loop(now) {
+  if (playing) tNow = (now - t0) / 1000;
+  const { D, A } = pose(tNow);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.save();
+  ctx.translate(cv.width / 2, cv.height / 2 + 30);
+  drawDog(ctx, D, A);
+  ctx.restore();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* =====================================================================
+   5) 조절판 — DOG 객체를 그대로 읽어 슬라이더를 자동 생성
+   ===================================================================== */
+const RANGES = {
+  cx: [-140, 140], cy: [-200, 200], rx: [4, 110], ry: [4, 110], rot: [-90, 90],
+  dx: [0, 140], w: [2, 140], h: [1, 40], r: [3, 40], len: [5, 90],
+  sag: [-30, 40], th: [2, 30], lw: [1, 12], lineW: [0, 14], x: [-140, 140], y: [-200, 200],
+};
+const GROUPS = [
+  ["머리", "head"], ["왼쪽 귀", "earL"], ["오른쪽 귀", "earR"], ["눈", "eyes"], ["입", "mouth"],
+  ["몸통", "body"], ["팔", "arms"], ["발", "feet"], ["목줄", "collar"], ["이름표", "tag"], ["꼬리", "tail"],
+];
+const panel = document.getElementById("panel");
+
+function addCtl(parent, label, obj, key) {
+  const v = obj[key];
+  const row = document.createElement("div"); row.className = "ctl";
+  if (typeof v === "boolean") {
+    row.innerHTML = `<label>${label}</label>`;
+    const c = document.createElement("input"); c.type = "checkbox"; c.checked = v;
+    c.addEventListener("change", () => { obj[key] = c.checked; });
+    row.appendChild(c);
+  } else if (typeof v === "string") {
+    row.innerHTML = `<label>${label}</label>`;
+    const c = document.createElement("input"); c.type = "color"; c.value = v;
+    c.addEventListener("input", () => { obj[key] = c.value; });
+    row.appendChild(c);
+  } else {
+    const [lo, hi] = RANGES[key] || [-150, 150];
+    row.innerHTML = `<label>${label}</label>`;
+    const rg = document.createElement("input"); rg.type = "range";
+    rg.min = lo; rg.max = hi; rg.step = 0.5; rg.value = v;
+    const nb = document.createElement("input"); nb.type = "number"; nb.value = v; nb.step = 0.5;
+    const set = val => { obj[key] = parseFloat(val); rg.value = val; nb.value = val; };
+    rg.addEventListener("input", () => set(rg.value));
+    nb.addEventListener("input", () => set(nb.value));
+    row.append(rg, nb);
+  }
+  parent.appendChild(row);
+}
+const KO = { cx: "가로 위치", cy: "세로 위치", rx: "가로 크기", ry: "세로 크기", rot: "기울기",
+             dx: "좌우 간격", w: "너비", h: "높이", r: "반지름", len: "길이", sag: "처짐",
+             th: "두께", lw: "선 굵기", show: "보이기", dark: "갈색 귀", x: "가로 위치", y: "세로 위치" };
+
+let h = document.createElement("h2"); h.textContent = "🎨 색"; panel.appendChild(h);
+Object.keys(DOG.color).forEach(k => addCtl(panel, k, DOG.color, k));
+addCtl(panel, "선 굵기", DOG, "lineW");
+
+h = document.createElement("h2"); h.textContent = "🏃 움직임"; panel.appendChild(h);
+["breathe", "blink", "earSway", "bob", "wag"].forEach(k => {
+  const names = { breathe: "숨쉬기", blink: "눈 깜빡임", earSway: "귀 흔들림", bob: "통통 뛰기", wag: "꼬리 흔들기" };
+  addCtl(panel, names[k], MOTION, k);
+});
+addCtl(panel, "속도", MOTION, "speed");
+document.querySelectorAll(".ctl input[type=range]").forEach(r => {
+  if (r.previousSibling && r.previousSibling.textContent === "속도") { r.min = 0; r.max = 3; r.step = 0.05; }
+});
+
+GROUPS.forEach(([ko, key]) => {
+  const hh = document.createElement("h2"); hh.textContent = ko; panel.appendChild(hh);
+  Object.keys(DOG[key]).forEach(k => addCtl(panel, KO[k] || k, DOG[key], k));
+});
+
+/* 저장 / 불러오기 / 내보내기 */
+const btns = document.createElement("div"); btns.className = "btns";
+btns.innerHTML = `
+  <button id="bPlay" class="on">⏸ 정지</button>
+  <button id="bJson">💾 JSON 저장</button>
+  <button id="bLoad">📂 불러오기</button>
+  <button id="bPng">🖼 PNG 저장</button>
+  <button id="bSvg">🧩 SVG 내보내기</button>`;
+panel.appendChild(btns);
+const ta = document.createElement("textarea");
+ta.placeholder = "여기에 JSON을 붙여넣고 [📂 불러오기]를 누르면 그 캐릭터가 됩니다.";
+panel.appendChild(ta);
+
+document.getElementById("bPlay").addEventListener("click", e => {
+  playing = !playing;
+  if (playing) t0 = performance.now() - tNow * 1000;
+  e.target.textContent = playing ? "⏸ 정지" : "▶ 재생";
+  e.target.classList.toggle("on", playing);
+});
+document.getElementById("bJson").addEventListener("click", () => {
+  ta.value = JSON.stringify({ DOG, MOTION }, null, 1);
+  ta.select();
+});
+document.getElementById("bLoad").addEventListener("click", () => {
+  try {
+    const o = JSON.parse(ta.value);
+    if (o.DOG) Object.assign(DOG, o.DOG);
+    if (o.MOTION) Object.assign(MOTION, o.MOTION);
+    location.reload();                       // 슬라이더를 새 값으로 다시 만든다
+  } catch (e) { alert("JSON을 읽지 못했어요: " + e.message); }
+});
+document.getElementById("bPng").addEventListener("click", () => {
+  const a = document.createElement("a");
+  a.download = "puppy.png"; a.href = cv.toDataURL("image/png"); a.click();
+});
+document.getElementById("bSvg").addEventListener("click", () => {
+  const svg = toSVG(DOG);
+  const a = document.createElement("a");
+  a.download = "puppy.svg";
+  a.href = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  a.click();
+  ta.value = svg;
+});
+
+/* 같은 숫자로 SVG 문자열도 만들어 준다 (웹·인쇄용) */
+function toSVG(D) {
+  const C = D.color, o = [];
+  const E = (x, y, rx, ry, rot, fill) =>
+    `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${fill}"` +
+    (rot ? ` transform="rotate(${rot} ${x} ${y})"` : "") + `/>`;
+  o.push(E(D.body.cx, D.body.cy, D.body.rx, D.body.ry, 0, C.fur));
+  o.push(E(-D.arms.dx, D.arms.cy, D.arms.rx, D.arms.ry, D.arms.rot, C.fur));
+  o.push(E(D.arms.dx, D.arms.cy, D.arms.rx, D.arms.ry, -D.arms.rot, C.fur));
+  o.push(E(-D.feet.dx, D.feet.cy, D.feet.rx, D.feet.ry, 0, C.fur));
+  o.push(E(D.feet.dx, D.feet.cy, D.feet.rx, D.feet.ry, 0, C.fur));
+  const cw = D.collar.w / 2;
+  o.push(`<path d="M${-cw},${D.collar.cy} Q0,${D.collar.cy + D.collar.sag} ${cw},${D.collar.cy}" fill="none" stroke="${C.line}" stroke-width="${D.collar.th + D.lineW}"/>`);
+  o.push(`<path d="M${-cw},${D.collar.cy} Q0,${D.collar.cy + D.collar.sag} ${cw},${D.collar.cy}" fill="none" stroke="${C.collar}" stroke-width="${D.collar.th}"/>`);
+  o.push(E(0, D.tag.cy, D.tag.r, D.tag.r, 0, C.tag));
+  o.push(E(D.earL.cx, D.earL.cy, D.earL.rx, D.earL.ry, D.earL.rot, D.earL.dark ? C.earDark : C.fur));
+  o.push(E(D.earR.cx, D.earR.cy, D.earR.rx, D.earR.ry, D.earR.rot, D.earR.dark ? C.earDark : C.fur));
+  o.push(E(D.head.cx, D.head.cy, D.head.rx, D.head.ry, 0, C.fur));
+  o.push(E(-D.eyes.dx, D.eyes.cy, D.eyes.rx, D.eyes.ry, 0, C.eye));
+  o.push(E(D.eyes.dx, D.eyes.cy, D.eyes.rx, D.eyes.ry, 0, C.eye));
+  const m = D.mouth, hw = m.w / 2;
+  o.push(`<path d="M${-hw},${m.cy - m.h * 0.15} Q${-hw * 0.45},${m.cy + m.h} 0,${m.cy + m.h * 0.15} Q${hw * 0.45},${m.cy + m.h} ${hw},${m.cy - m.h * 0.15}" fill="none" stroke="${C.line}" stroke-width="${m.lw}" stroke-linecap="round"/>`);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-160 -190 320 350" width="320" height="350">` +
+         `<g stroke="${C.line}" stroke-width="${D.lineW}" stroke-linejoin="round">${o.join("")}</g></svg>`;
+}
+</script>
+</body>
+</html>

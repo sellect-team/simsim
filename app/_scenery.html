@@ -1,0 +1,42 @@
+<!doctype html><meta charset="utf-8"><title>코드 배경 시험</title>
+<body style="background:#181820;color:#eee;font-family:system-ui;padding:14px">
+<div id="log" style="margin-bottom:10px"></div>
+<div id="out" style="display:flex; flex-wrap:wrap; gap:8px"></div>
+<script type="module">
+import { drawScenery, readScenery } from "/p/js/story/scenery.js";
+const 이름들 = [
+  "밤바다", "노을 지는 바다", "해변",
+  "공원 잔디밭", "들판", "꽃밭", "노을 들판", "밤 들판",
+  "숲속", "밤 숲", "산 아래", "눈 오는 마을", "설원",
+  "골목길", "비 오는 거리", "마을 어귀", "밤 마을",
+  "내 방", "부엌", "교실",
+  "사막", "우주", "시냇가", "모닥불 캠프",
+  "듣도보도못한이름",
+];
+const W = 126, H = 224;
+const out = document.getElementById("out");
+let 총 = 0;
+for (const n of 이름들) {
+  const wrap = document.createElement("div");
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H; c.style.borderRadius = "6px";
+  const t0 = performance.now();
+  const cfg = drawScenery(c.getContext("2d"), { x: 0, y: 0, w: W, h: H }, n, 1.2);
+  총 += performance.now() - t0;
+  wrap.appendChild(c);
+  const lab = document.createElement("div");
+  lab.style.cssText = "font-size:11px; width:" + W + "px; line-height:1.3; margin-top:2px";
+  lab.textContent = n + (cfg.알아봄 ? "" : " ⚠기본");
+  lab.title = `${cfg.시간.이름} · ${cfg.장소.이름}`;
+  wrap.appendChild(lab);
+  out.appendChild(wrap);
+}
+// 두 번째 그리기 = 곳간이 도는지 (한 번 그린 배경은 다시 안 그린다)
+const c2 = document.createElement("canvas"); c2.width = W; c2.height = H;
+const t1 = performance.now();
+for (let i = 0; i < 60; i++) drawScenery(c2.getContext("2d"), { x: 0, y: 0, w: W, h: H }, "밤바다", i / 30);
+const 초당 = (performance.now() - t1) / 60;
+document.getElementById("log").textContent =
+  `${이름들.length}종 · 처음 그리기 합계 ${총.toFixed(0)}ms · 이후 한 장 ${초당.toFixed(2)}ms`;
+document.title = "그림 완료";
+</script>

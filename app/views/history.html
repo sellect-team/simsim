@@ -1,0 +1,113 @@
+<div class="card">
+    <div id="histSubtabs">
+      <button class="subtab on" data-hist="video" type="button">🎬 동영상</button>
+      <button class="subtab" data-hist="music" type="button">🎵 뮤직비주얼</button>
+    </div>
+    <div id="histMusicPane" style="display:none">
+      <h2>🎵 저장된 뮤직비주얼</h2>
+      <div class="hint" style="margin-bottom:10px">
+        재생을 누르면 팝업 화면이 열려 <b>배경 입자와 음악, 하단 가사만</b> 보입니다 (ESC 또는 ✕로 닫기).
+      </div>
+      <div class="histToolbar">
+        <button class="ghost small" id="mvHistRefresh" type="button">🔄 새로고침</button>
+        <span class="hint" id="mvHistCount"></span>
+      </div>
+      <div id="mvHistList"></div>
+    </div>
+    <div id="histVideoPane">
+    <h2>생성된 영상 관리</h2>
+    <div id="histToolbar" style="flex-wrap:wrap; gap:8px; align-items:center">
+      <input id="histFind" placeholder="🔍 이름으로 찾기" style="max-width:220px">
+      <select id="histSort" style="max-width:150px">
+        <option value="최근">최근 만든 순</option>
+        <option value="오래된">오래된 순</option>
+        <option value="이름">이름 순</option>
+        <option value="큰것">큰 파일부터</option>
+        <option value="긴것">긴 영상부터</option>
+      </select>
+      <select id="histGroupFilter"><option value="">전체 보기</option></select>
+      <select id="histProject" style="max-width:170px"><option value="">모든 프로젝트</option></select>
+      <button class="ghost small" id="histView" type="button"
+              title="격자로 보면 그림으로 훑기 좋습니다">▦ 격자로 보기</button>
+      <button class="ghost small" id="histRefreshBtn">🔄 새로고침</button>
+      <button class="ghost small" id="histOpenDirBtn">📂 저장 폴더 열기</button>
+      <button class="ghost small" id="histTidy"
+              title="어느 프로젝트도 쓰지 않는 영상을 한 번에 정리합니다">🧹 주인 없는 것 정리</button>
+      <span class="hint" id="histCount"></span>
+    </div>
+    <div id="histSelBar">
+      <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer">
+        <input type="checkbox" id="histSelAll" style="width:auto; margin:0"> 현재 목록 전체 선택
+      </label>
+      <span class="hint" id="histSelCount">선택 없음</span>
+      <button class="ghost small" id="histDlSel" disabled
+              title="고른 영상을 zip 하나로 묶어 내려받습니다">⬇ 선택한 영상 내려받기</button>
+      <button class="danger small" id="histDelSel" disabled>🗑 선택한 영상 삭제</button>
+    </div>
+    <div id="histPlayerWrap"><video id="histPlayer" controls loop></video><img id="histPlayerImg" style="display:none; max-width:720px; width:100%; border-radius:10px; margin:0 auto; display:none"></div>
+    <div id="editPanel" style="display:none; margin-top:12px; border:1px solid var(--warn); border-radius:12px; padding:14px">
+      <div style="font-size:13px; font-weight:600; margin-bottom:10px">✂ 영상 편집: <span id="editTarget" style="color:var(--accent)"></span> <span class="hint">(원본은 그대로 두고 새 파일로 저장됩니다)</span></div>
+      <div class="grid">
+        <div><label>시작 지점 (초)</label><input id="editStart" type="number" min="0" step="0.5" value="0"></div>
+        <div><label>끝 지점 (초 · 0=끝까지)</label><input id="editEnd" type="number" min="0" step="0.5" value="0"></div>
+        <div><label>재생 속도</label><select id="editSpeed">
+          <option value="0.5">0.5×</option><option value="0.75">0.75×</option>
+          <option value="1" selected>1× (그대로)</option><option value="1.5">1.5×</option><option value="2">2×</option>
+        </select></div>
+        <div><label>크기 변경</label><select id="editScale">
+          <option value="0.5">50%</option><option value="0.75">75%</option>
+          <option value="1" selected>100% (그대로)</option><option value="1.5">150%</option>
+        </select></div>
+        <div><label>떨림 제거</label><select id="editStab">
+          <option value="0" selected>안 함</option><option value="1">약</option><option value="2">중</option><option value="3">강</option>
+        </select></div>
+        <div><label>프레임 홀드</label><select id="editHold">
+          <option value="1" selected>안 함</option><option value="2">2프레임 (12fps 느낌)</option><option value="3">3프레임 (8fps 느낌)</option>
+        </select></div>
+      </div>
+      <div class="row">
+        <button id="editApplyBtn">✂ 적용 → 새 파일로 저장</button>
+        <button class="ghost small" id="editCloseBtn" style="flex:0.4">닫기</button>
+      </div>
+    </div>
+    <div id="musicPanel" style="display:none; margin-top:12px; border:1px solid var(--accent); border-radius:12px; padding:14px">
+      <div style="font-size:13px; font-weight:600; margin-bottom:10px">🎵 음악 입히기: <span id="musicTarget" style="color:var(--accent)"></span> <span class="hint">(새 파일로 저장됩니다)</span></div>
+      <div class="row" style="margin-top:0">
+        <button class="ghost" id="musicPickBtn" type="button">🎵 음악 파일 선택 (mp3/wav)</button>
+        <span class="hint" id="musicInfo" style="flex:2; align-self:center"></span>
+      </div>
+      <input type="file" id="musicFile" accept="audio/*" style="display:none">
+      <div class="grid" style="margin-top:10px">
+        <div><label>길이 모드</label><select id="musicMode">
+          <option value="video" selected>영상 길이에 맞춰 노래 자르기</option>
+          <option value="loop_video">노래가 끝날 때까지 영상 반복</option>
+        </select></div>
+        <div><label>노래 구간</label><select id="musicRange">
+          <option value="full" selected>전체 사용</option>
+          <option value="part">특정 구간 선택</option>
+        </select></div>
+        <div id="musicPartWrap" style="display:none"><label>시작 (초)</label><input id="musicStart" type="number" min="0" step="0.5" value="0"></div>
+        <div id="musicPartWrap2" style="display:none"><label>끝 (초)</label><input id="musicEnd" type="number" min="0" step="0.5" value="0"></div>
+      </div>
+      <div class="row">
+        <button id="musicApplyBtn">🎵 적용 → 새 파일로 저장</button>
+        <button class="ghost small" id="musicCloseBtn" style="flex:0.4">닫기</button>
+      </div>
+    </div>
+    <div id="histStatus" class="hint" style="text-align:center; min-height:16px; margin-top:8px"></div>
+    <div id="histList"></div>
+    <div class="charRow" style="justify-content:center; margin-top:10px">
+      <button class="ghost small" id="histMore" type="button" style="display:none">더 보기</button>
+    </div>
+    </div>
+  </div>
+  <div class="card" id="histHelpCard">
+    <h2>안내</h2>
+    <div class="hint">
+      · 파일명을 클릭하면 미리보기가 재생됩니다.<br>
+      · <b>그룹</b>: 드롭다운에서 그룹을 지정해 영상을 분류할 수 있어요 ("＋ 새 그룹"으로 생성).<br>
+      · <b>🔒 잠금</b>: 잠긴 영상은 삭제되지 않습니다.<br>
+      · <b>삭제</b>: 영구 삭제가 아니라 <b>output\video\_trash</b> 폴더로 이동합니다 (복구 가능).<br>
+      · <b>📍 위치</b>: 탐색기에서 해당 파일을 바로 보여줍니다.
+    </div>
+  </div>

@@ -1,0 +1,119 @@
+<div class="charRow">
+  <select id="pmMesh" style="min-width:230px"><option value="">3D 모델 고르기…</option></select>
+  <button class="ghost small" id="pmRefresh" type="button">🔄</button>
+  <select id="pmChar" style="min-width:190px"><option value="">색을 가져올 캐릭터…</option></select>
+  <span class="hint" id="pmInfo" style="align-self:center"></span>
+</div>
+<div class="charRow">
+  <button id="pmAuto">🎨 자동으로 색 입히기</button>
+  <span class="hint" id="pmAutoHint">이 3D를 만든 원본 그림을 알아서 찾아 전체에 입힙니다 (보는 각도와 무관)</span>
+</div>
+<div class="charRow">
+  <button class="ghost" id="pmStampMode">🖼 그림 도장 (무늬·로고 찍기)</button>
+  <select id="pmStampSrc" style="min-width:180px">
+    <option value="upload" selected>찍을 그림 올리기…</option>
+    <option value="front">이 캐릭터 정면 그림</option>
+    <option value="side">이 캐릭터 측면 그림</option>
+    <option value="back">이 캐릭터 후면 그림</option>
+  </select>
+  <img id="pmStampPrev" style="display:none; width:44px; height:44px; object-fit:contain;
+       border-radius:8px; background:repeating-conic-gradient(#2a2730 0 25%, #201d26 0 50%) 0 0/12px 12px">
+  <span class="hint">원하는 곳만 <b>클릭해서</b> 찍습니다 (모양·글자·무늬를 붙일 때)</span>
+  <input type="file" id="pmStampFile" accept="image/*" style="display:none">
+</div>
+
+<div class="mkCols" style="margin-top:12px">
+  <div>
+    <div id="pmStage" style="position:relative; width:100%; aspect-ratio:1/1; border-radius:14px;
+         overflow:hidden; background:#17151a">
+      <canvas id="pmCanvas"></canvas>
+      <div id="pmCursor" style="position:absolute; left:0; top:0; width:0; height:0; border-radius:50%;
+           border:2px solid rgba(255,255,255,0.9); box-shadow:0 0 0 1px rgba(0,0,0,0.6) inset,
+           0 0 6px rgba(0,0,0,0.5); pointer-events:none; display:none; transform:translate(-50%,-50%)"></div>
+    </div>
+    <div class="charRow" style="margin-top:8px">
+      <label style="display:flex; align-items:center; gap:6px; margin:0; width:auto; cursor:pointer">
+        <input type="checkbox" id="pmSpin" checked style="width:auto; margin:0"> 자동 회전
+      </label>
+      <span class="hint"><b>왼쪽 버튼 = 칠하기</b> · <b>오른쪽 버튼 드래그 = 돌려보기</b> (모드와 상관없이)</span>
+    </div>
+  </div>
+
+  <div>
+    <h3 class="mkHead">🖌 손으로 고치기</h3>
+    <div class="grid">
+      <div><label>모드</label><select id="pmMode">
+        <option value="orbit" selected>돌려보기</option>
+        <option value="paint">붓으로 칠하기</option>
+        <option value="stamp">그림 도장 찍기</option>
+        <option value="pick">색 찍어오기 (스포이드)</option>
+      </select></div>
+      <div><label>붓 색</label><input type="color" id="pmColor" value="#f4dcae"
+           style="width:100%; height:34px; padding:2px"></div>
+      <div><label>붓 크기 <span class="hint" id="pmSizeHint">3%</span></label>
+        <div class="numRow">
+          <input type="range" id="pmSizeR" min="0.5" max="25" step="0.5" value="3">
+          <input type="number" id="pmSize" min="0.2" max="60" step="0.5" value="3"><span class="unit">%</span>
+        </div>
+      </div>
+      <div><label>붓 세기 <span class="hint" id="pmFlowHint">100%</span></label>
+        <div class="numRow">
+          <input type="range" id="pmFlowR" min="10" max="100" step="5" value="100">
+          <input type="number" id="pmFlow" min="5" max="100" step="5" value="100"><span class="unit">%</span>
+        </div>
+      </div>
+      <div><label>가장자리 부드럽게</label><select id="pmSoft">
+        <option value="1" selected>부드럽게 (자연스러움)</option>
+        <option value="0">또렷하게</option>
+      </select></div>
+      <div><label>기본 색 (칠하지 않은 곳)</label>
+        <input type="color" id="pmBase" value="#f4dcae" style="width:100%; height:34px; padding:2px"></div>
+      <div style="grid-column:1/-1">
+        <label>붓 견본 <span class="hint">— 지금 설정으로 한 번 칠했을 때의 모습</span></label>
+        <canvas id="pmBrushPrev" width="360" height="90"
+                style="width:100%; height:90px; border-radius:10px; background:#241f26"></canvas>
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="ghost" id="pmUndo">↶ 되돌리기</button>
+      <button class="ghost" id="pmReset">처음으로</button>
+      <button id="pmSave" style="flex:1.3">💾 색 입힌 3D로 저장</button>
+    </div>
+
+    <h3 class="mkHead" style="margin-top:16px">⚙ 자동 색 입히기 설정</h3>
+    <div class="grid">
+      <div><label>정면 그림 반영 <span class="hint" id="pmFrontHint">100%</span></label>
+        <div class="numRow">
+          <input type="range" id="pmFrontR" min="0" max="200" step="5" value="100">
+          <input type="number" id="pmFront" min="0" max="200" step="5" value="100"><span class="unit">%</span>
+        </div>
+      </div>
+      <div><label>옆면 처리</label><select id="pmSideMode">
+        <option value="extend" selected>정면·후면 색을 옆으로 감싸기 (안정적)</option>
+        <option value="image">측면 그림 그대로 붙이기</option>
+        <option value="flip">측면 그림 뒤집어 붙이기</option>
+      </select></div>
+      <div><label>옆·뒤 섞임 <span class="hint" id="pmBlendHint">보통</span></label>
+        <div class="numRow">
+          <input type="range" id="pmBlendR" min="1" max="12" step="1" value="4">
+          <input type="number" id="pmBlend" min="1" max="20" step="1" value="4">
+        </div>
+      </div>
+      <div><label>밝기 보정 <span class="hint" id="pmGammaHint">1.00</span></label>
+        <div class="numRow">
+          <input type="range" id="pmGammaR" min="50" max="200" step="5" value="100">
+          <input type="number" id="pmGamma" min="30" max="250" step="5" value="100"><span class="unit">%</span>
+        </div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:8px">
+      자동 색 입히기는 그 3D를 만든 <b>원본 그림</b>을 3D 표면에 투영해 꼭짓점마다 색을 정합니다
+      (화면에서 모델이 돌아가고 있어도 늘 같은 자리에 입혀집니다).<br>
+      <b>옆면 처리</b>: 측면 그림을 옆구리에 억지로 늘려 붙이면 얼굴·귀가 옆면에 번져 이상해집니다.
+      기본값 <b>'정면·후면 색을 옆으로 감싸기'</b>는 옆면을 앞뒤 색으로 자연스럽게 이어 줍니다.
+      측면 그림의 무늬가 꼭 필요하면 '측면 그림 그대로', 앞뒤가 뒤바뀌어 보이면 '뒤집어'를 고르세요.
+    </div>
+    <div id="pmStatus" class="hint" style="text-align:center; min-height:18px; margin-top:8px"></div>
+  </div>
+</div>

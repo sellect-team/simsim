@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>3D 메시 보기 (이미지 → 3D 결과)</title>
+<style>
+  body { margin:0; background:#14121a; color:#EFE6D8;
+         font-family:"Pretendard","Malgun Gothic",system-ui,sans-serif; }
+  #bar { display:flex; gap:10px; align-items:center; padding:10px 14px; font-size:13px; flex-wrap:wrap; }
+  select, button { padding:6px 12px; border-radius:999px; border:1px solid #3b3446;
+                   background:#241f2e; color:#EFE6D8; font-size:12.5px; cursor:pointer; }
+  #view { position:absolute; inset:52px 0 0 0; }
+  canvas { display:block; width:100%; height:100%; }
+  #info { padding:0 14px; font-size:12px; color:#a89ab5; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <select id="pick"></select>
+  <button id="reload">🔄 목록 새로고침</button>
+  <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="spin" checked> 회전</label>
+  <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="wire"> 뼈대만 보기</label>
+  <span id="info"></span>
+</div>
+<div id="view"><canvas id="gl"></canvas></div>
+
+<script type="module">
+import * as THREE from "./lib/three.module.js";
+import { GLTFLoader } from "./lib/GLTFLoader.js";
+
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("gl"), antialias:true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x14121a);
+const camera = new THREE.PerspectiveCamera(35, 16/9, 0.01, 100);
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(2,3,3); scene.add(key);
+const fill = new THREE.DirectionalLight(0xaec7ff, 0.5); fill.position.set(-3,1,-2); scene.add(fill);
+scene.add(new THREE.GridHelper(4, 16, 0x3b3446, 0x241f2e));
+
+let obj = null, spin = true;
+const loader = new GLTFLoader();
+
+async function refresh() {
+  const d = await (await fetch("/api/mesh/list")).json();
+  const p = document.getElementById("pick");
+  p.innerHTML = (d.items||[]).map(m =>
+    `<option value="${m.name}">${m.name} (${(m.size/1048576).toFixed(1)}MB · ${m.date})</option>`).join("")
+    || '<option value="">아직 만든 메시가 없습니다</option>';
+  if (d.items && d.items.length) load(d.items[0].name);
+}
+function load(name) {
+  if (!name) return;
+  loader.load("/api/mesh/file?name=" + encodeURIComponent(name), g => {
+    if (obj) scene.remove(obj);
+    obj = g.scene;
+    // 화면에 꽉 차게 크기·위치 맞추기
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
+    const s = 1.8 / Math.max(size.x, size.y, size.z);
+    obj.scale.setScalar(s);
+    obj.position.set(-center.x*s, -center.y*s + 0.9, -center.z*s);
+    let tris = 0;
+    obj.traverse(o => {
+      if (o.isMesh) {
+        tris += o.geometry.index ? o.geometry.index.count/3 : o.geometry.attributes.position.count/3;
+        // 복셀에서 뽑은 메시는 법선이 없어 밋밋하게 보인다 → 직접 계산
+        if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
+        o.material = new THREE.MeshStandardMaterial({
+          color: 0xf6dfb0, roughness: 0.72, metalness: 0.02, flatShading: false,
+          wireframe: document.getElementById("wire").checked });
+      }
+    });
+    scene.add(obj);
+    document.getElementById("info").textContent =
+      `삼각형 ${Math.round(tris).toLocaleString()}개 · 크기 ${size.x.toFixed(2)}×${size.y.toFixed(2)}×${size.z.toFixed(2)}`;
+  }, undefined, e => { document.getElementById("info").textContent = "불러오기 실패: " + e.message; });
+}
+document.getElementById("pick").addEventListener("change", e => load(e.target.value));
+document.getElementById("reload").addEventListener("click", refresh);
+document.getElementById("spin").addEventListener("change", e => spin = e.target.checked);
+document.getElementById("wire").addEventListener("change", e => {
+  if (obj) obj.traverse(o => { if (o.isMesh) o.material.wireframe = e.target.checked; });
+});
+
+function fit() {
+  const v = document.getElementById("view");
+  renderer.setSize(v.clientWidth, v.clientHeight, false);
+  camera.aspect = v.clientWidth / v.clientHeight; camera.updateProjectionMatrix();
+}
+addEventListener("resize", fit); fit();
+camera.position.set(0, 1.2, 4.2); camera.lookAt(0, 0.9, 0);
+function loop() {
+  requestAnimationFrame(loop);
+  if (obj && spin) obj.rotation.y += 0.006;
+  renderer.render(scene, camera);
+}
+loop();
+refresh();
+window.MeshViewer = { load, refresh, scene, camera, renderer, get obj(){ return obj; } };
+</script>
+</body>
+</html>

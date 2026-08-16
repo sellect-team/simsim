@@ -1,0 +1,74 @@
+<!doctype html><meta charset="utf-8"><title>얼굴 찾기 겨루기</title>
+<body style="background:#191720;color:#eee;font-family:system-ui;padding:14px">
+<pre id="log" style="white-space:pre-wrap;font-size:13px"></pre>
+<script type="module">
+import { findFace } from "/p/js/char/facefind.js";
+const log = m => document.getElementById("log").textContent += m + "\n";
+
+/* 만화 캐릭터 30종 — 동물·사람·표정, 눈 모양이 서로 다른 것들로 골랐다 */
+const 목록 = [
+  ["1F436", "강아지"], ["1F431", "고양이"], ["1F42D", "생쥐"], ["1F430", "토끼"],
+  ["1F98A", "여우"], ["1F43B", "곰"], ["1F43C", "판다"], ["1F428", "코알라"],
+  ["1F42F", "호랑이"], ["1F981", "사자"], ["1F42E", "소"], ["1F437", "돼지"],
+  ["1F438", "개구리"], ["1F435", "원숭이"], ["1F414", "닭"], ["1F427", "펭귄"],
+  ["1F426", "새"], ["1F424", "병아리"], ["1F986", "오리"], ["1F989", "부엉이"],
+  ["1F43A", "늑대"], ["1F417", "멧돼지"], ["1F434", "말"], ["1F984", "유니콘"],
+  ["1F41D", "꿀벌"], ["1F41B", "애벌레"], ["1F98B", "나비"], ["1F419", "문어"],
+  ["1F600", "활짝웃음"], ["1F60A", "미소"], ["1F622", "울음"], ["1F62E", "놀람"],
+  ["1F60D", "하트눈"], ["1F634", "잠"], ["1F92A", "장난"], ["1F913", "안경"],
+];
+
+const load = u => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error(u)); i.src = u; });
+const S0 = await (await fetch("/api/frames/start", { method: "POST",
+  headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "_bench", fps: 1 }) })).json();
+
+const 결과 = [];
+for (const [code, 이름] of 목록) {
+  let img;
+  try { img = await load(`/p/_facetest/openmoji/${code}.png`); } catch { log(`${이름} 그림 없음`); continue; }
+  const t0 = performance.now();
+  const f = findFace(img);
+  결과.push({ 이름, img, f, ms: performance.now() - t0 });
+}
+
+/* 표시 */
+const W = 150, H = 175, cols = 9;
+const rows = Math.ceil(결과.length / cols);
+const cv = document.createElement("canvas");
+cv.width = W * cols; cv.height = H * rows + 26;
+const x = cv.getContext("2d");
+x.fillStyle = "#faf7f2"; x.fillRect(0, 0, cv.width, cv.height);
+x.fillStyle = "#2b2119"; x.font = "700 15px system-ui";
+x.fillText("만화 캐릭터 36종 — 노랑/주황=눈  초록=코  분홍=입", 10, 18);
+결과.forEach((s, i) => {
+  const bx = (i % cols) * W, by = 26 + ((i / cols) | 0) * H;
+  x.save(); x.translate(bx, by);
+  x.strokeStyle = "#e6e1d8"; x.strokeRect(0, 0, W, H);
+  const sc = Math.min((W - 14) / s.img.width, (H - 30) / s.img.height);
+  const dw = s.img.width * sc, dh = s.img.height * sc;
+  const ox = (W - dw) / 2, oy = 6;
+  x.drawImage(s.img, ox, oy, dw, dh);
+  const mark = (p, col) => {
+    if (!p) return;
+    x.strokeStyle = col; x.lineWidth = 2;
+    x.beginPath(); x.arc(ox + p.x * dw, oy + p.y * dh, Math.max(3, p.r * dw), 0, 7); x.stroke();
+  };
+  mark(s.f.eyeL, "#eab308"); mark(s.f.eyeR, "#f97316");
+  mark(s.f.nose, "#22c55e"); mark(s.f.mouth, "#ec4899");
+  x.fillStyle = s.f.확신 > 0.5 ? "#1f7a3d" : (s.f.확신 > 0 ? "#b8860b" : "#a33");
+  x.font = "11px system-ui";
+  x.fillText(`${s.이름} ${(s.f.확신 * 100).toFixed(0)}%`, 6, H - 6);
+  x.restore();
+});
+document.body.appendChild(cv); cv.style.maxWidth = "100%";
+await fetch(`/api/frames/add?id=${S0.id}&i=0&b64=1`, { method: "POST", body: cv.toDataURL("image/png") });
+
+const 성공 = 결과.filter(r => r.f.확신 >= 0.35).length;
+log(`검사 ${결과.length}종 · 찾음 ${성공}종 (${(성공 / 결과.length * 100).toFixed(0)}%) · 평균 ${(결과.reduce((a, b) => a + b.ms, 0) / 결과.length).toFixed(1)}ms`);
+log("");
+결과.forEach(r => log(`${r.이름.padEnd(6)} ${(r.f.확신 * 100).toFixed(0).padStart(3)}%` +
+  (r.f.nose ? (r.f.코입붙음 ? " 코+입붙음" : " 코따로") : (r.f.mouth ? " 입만" : "")) +
+  (r.f.eyeL ? `  눈 ${r.f.eyeL.x.toFixed(2)},${r.f.eyeL.y.toFixed(2)} / ${r.f.eyeR.x.toFixed(2)},${r.f.eyeR.y.toFixed(2)}` :
+   r.f.eyeR ? `  한쪽눈 ${r.f.eyeR.x.toFixed(2)},${r.f.eyeR.y.toFixed(2)}` : "  못 찾음")));
+document.title = `찾음 ${성공}/${결과.length}`;
+</script>

@@ -1,0 +1,45 @@
+<!doctype html><meta charset="utf-8"><title>전환 미리보기</title>
+<body style="background:#181820;color:#eee;font-family:system-ui;padding:16px">
+<div id="log"></div><div id="out"></div>
+<script type="module">
+import { Stage, TRANSITIONS } from "/p/js/story/stage.js";
+import { StoryDoc } from "/p/js/story/doc.js";
+import { library } from "/p/js/story/assets.js";
+await library.refresh(true);
+const 개 = library.characters.find(c => c.name.includes("우리집"))?.name || library.characters[0].name;
+const bgs = library.backgrounds.map(b => b.name);
+const A = bgs.find(b => b.includes("공원")) || bgs[0], B = bgs.find(b => b !== A) || A;
+const names = Object.keys(TRANSITIONS).filter(n => n !== "없음");
+const W = 108, H = 192, STEPS = 6;
+const out = document.getElementById("out");
+for (const n of names) {
+  const doc = new StoryDoc(`장면 ${A}
+  ${개} 등장 가운데 크기:0.6 동작:bounce
+  자막 "앞 장면"
+  대기 0.6초
+
+장면 ${B} 전환:${n}
+  ${개} 등장 오른쪽 크기:0.6 표정:happy
+  자막 "새 장면"
+  대기 0.6초`);
+  await doc.build(library);
+  const s = doc.stage;
+  const 시작 = s.scenes[1].start;
+  const 길이 = TRANSITIONS[n].기본길이 || 0.55;
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:3px;align-items:center;margin:6px 0";
+  const lab = document.createElement("div");
+  lab.style.cssText = "width:170px;font-size:13px";
+  lab.textContent = n + " (" + 길이 + "초)";
+  row.appendChild(lab);
+  for (let i = 0; i < STEPS; i++) {
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H; c.style.cssText = "border-radius:4px";
+    s.drawAt(c.getContext("2d"), { x: 0, y: 0, w: W, h: H }, 시작 - 0.12 + (길이 + 0.24) * i / (STEPS - 1));
+    row.appendChild(c);
+  }
+  out.appendChild(row);
+}
+document.getElementById("log").textContent = `${names.length}종 · 전환 전후를 6컷으로`;
+document.title = "그림 완료";
+</script>

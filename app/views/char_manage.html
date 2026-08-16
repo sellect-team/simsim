@@ -1,0 +1,92 @@
+<div class="charRow">
+  <button class="ghost" id="chPick" type="button">🖼 캐릭터 시트 올리기</button>
+  <span class="hint" id="chInfo" style="align-self:center"></span>
+</div>
+<input type="file" id="chFile" accept="image/*" style="display:none">
+
+<div id="chOptWrap" style="display:none; margin-top:12px; border:1px solid var(--border);
+     border-radius:12px; padding:12px; background:rgba(0,0,0,0.18)">
+  <div style="font-size:13px; font-weight:600; margin-bottom:8px">🧹 배경 제거</div>
+  <div class="grid">
+    <div><label>지울 배경</label><select id="chBgMode">
+      <option value="auto" selected>자동 (그림 가장자리 색)</option>
+      <option value="white">흰색 계열</option>
+      <option value="color">직접 고른 색</option>
+      <option value="keep">지우지 않음 (이미 투명한 그림)</option>
+    </select></div>
+    <div><label>지우는 세기 <span class="hint" id="chTolHint">26</span></label>
+      <div class="numRow">
+        <input type="range" id="chTolR" min="4" max="120" step="1" value="26">
+        <input type="number" id="chTol" min="2" max="200" step="1" value="26">
+      </div>
+    </div>
+  </div>
+
+  <button class="ghost small" id="chAdvBtn" type="button" style="margin-top:10px; width:auto">▼ 고급 옵션 펼치기</button>
+  <div id="chAdv" class="grid" style="margin-top:8px">
+    <div><label>배경 색 (직접 고르기)</label>
+      <input type="color" id="chBgColor" value="#faf6ee" style="width:100%; height:34px; padding:2px">
+    </div>
+    <div><label>가장자리 처리</label><select id="chFeather">
+      <option value="1" selected>부드럽게 (원본 외곽선 유지)</option>
+      <option value="0">깔끔하게 (딱 잘라내기)</option>
+    </select></div>
+    <div><label>끊긴 선 잇기 <span class="hint" id="chGapHint">5</span></label>
+      <div class="numRow">
+        <input type="range" id="chGapR" min="1" max="21" step="2" value="5">
+        <input type="number" id="chGap" min="1" max="25" step="1" value="5">
+      </div>
+    </div>
+    <div><label>최소 크기 <span class="hint" id="chMinHint">1200</span></label>
+      <div class="numRow">
+        <input type="range" id="chMinR" min="100" max="20000" step="100" value="1200">
+        <input type="number" id="chMin" min="50" max="200000" step="100" value="1200">
+      </div>
+    </div>
+    <div><label>여백</label>
+      <div class="numRow">
+        <input type="range" id="chPadR" min="0" max="40" step="1" value="8">
+        <input type="number" id="chPad" min="0" max="60" step="1" value="8">
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <button class="ghost" id="chReSplit">🔄 이 설정으로 다시 분리</button>
+    <button id="chSave" style="flex:1.2">💾 캐릭터로 저장</button>
+  </div>
+</div>
+
+<div class="poseGrid" id="chPoses"></div>
+<div id="chStatus" class="hint" style="text-align:center; min-height:18px; margin-top:8px"></div>
+
+<h3 style="font-size:13px; color:var(--accent); margin:18px 0 8px">저장된 캐릭터 (그림)</h3>
+<div class="charRow" style="margin-top:0">
+  <input id="chSearch" type="text" placeholder="🔍 이름으로 찾기" style="flex:1; min-width:160px">
+  <select id="chPoseFilter" style="width:auto">
+    <option value="">모든 포즈</option>
+    <option value="front">정면 있음</option>
+    <option value="side">측면 있음</option>
+    <option value="back">후면 있음</option>
+    <option value="sit">앉기 있음</option>
+    <option value="lie">엎드리기 있음</option>
+    <option value="3d">3D 만들기 가능 (정면·측면·후면)</option>
+  </select>
+  <select id="chSort" style="width:auto">
+    <option value="new">최신순</option>
+    <option value="old">오래된순</option>
+    <option value="name">이름순</option>
+    <option value="poses">포즈 많은순</option>
+  </select>
+  <span class="hint" id="chCount"></span>
+</div>
+<div id="chList" class="vlist"></div>
+
+<h3 style="font-size:13px; color:var(--accent); margin:22px 0 8px">
+  🧊 3D 캐릭터 <span class="hint">그림 캐릭터의 [🧊 3D로 만들기] 결과가 여기에 쌓입니다</span>
+</h3>
+<div class="charRow" style="margin-top:0">
+  <button class="ghost small" id="ch3dRefresh" type="button">🔄 새로고침</button>
+  <span class="hint" id="ch3dCount"></span>
+</div>
+<div id="ch3dList" class="vlist"></div>

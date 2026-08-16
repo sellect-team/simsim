@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>심심 공작소</title>
+<style>
+  :root {
+    /* Dala design tokens */
+    --color-void: #000000;
+    --color-bone-white: #ffffff;
+    /* 목록 속 작은 글씨(11~12px)에 쓰인다. #9a9a9a 는 밝은 줄 위에서 4.4:1 로 살짝 모자랐다 */
+    --color-ash-gray: #a8a8a8;
+    --color-silver-mist: #bdbdbd;
+    --color-electric-iris: #8052ff;
+    --color-saffron-spark: #ffb829;
+    --color-deep-verdant: #15846e;
+
+    --bg: var(--color-void);
+    --panel: rgba(0,0,0,0.55); --panel2: rgba(255,255,255,0.035);
+    --border: rgba(255,255,255,0.10);
+    --text: var(--color-bone-white); --muted: var(--color-ash-gray);
+    --accent: var(--color-electric-iris); --accent2: var(--color-electric-iris);
+    --ok: var(--color-deep-verdant); --err: #f87171; --warn: var(--color-saffron-spark);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  #bgCanvas {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    z-index: 0; pointer-events: none; display: block;
+  }
+  body {
+    background: var(--color-void); color: var(--text);
+    font-family: Inter, "PPNeueMontreal", "Segoe UI", "Malgun Gothic", ui-sans-serif, sans-serif;
+    font-feature-settings: "ss01" on;
+    height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+  body > * { position: relative; z-index: 1; }
+  header {
+    padding: 18px 30px; border-bottom: none;
+    display: flex; align-items: center; gap: 18px; flex-shrink: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.85), rgba(0,0,0,0));
+  }
+  header h1 {
+    font-size: 24px; font-weight: 400; letter-spacing: -0.48px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  header h1::before {
+    content: ""; width: 0; height: 0;
+    border-left: 8px solid transparent; border-right: 8px solid transparent;
+    border-bottom: 14px solid var(--color-electric-iris);
+  }
+  header h1 span { color: var(--color-electric-iris); }
+  #comfyState { font-size: 14px; color: var(--color-silver-mist); margin-left: auto; }
+  #comfyState.ok { color: var(--ok); }
+  /* 왼쪽은 배경 형상이 보이도록 비워둔다 */
+  :root { --stage-left: 30vw; }
+  main { flex: 1; display: flex; min-height: 0; margin-left: var(--stage-left); }
+  @media (max-width: 1500px) { :root { --stage-left: 20vw; } }
+  @media (max-width: 1100px) { :root { --stage-left: 0px; } }
+  #tabs { display: flex; gap: 6px; margin-left: 18px; }
+  .tab {
+    background: none; border: none; color: var(--color-ash-gray);
+    padding: 7px 4px; border-radius: 0; font-size: 16px; font-weight: 600;
+    letter-spacing: 0.35px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: none; color: var(--color-bone-white); }
+
+  /* 히스토리·슬라이드쇼 탭 */
+  /* 탭 내용은 화면을 꽉 쓴다.
+     예전에는 왼쪽에 배경 무늬를 보여 주려고 여백(--stage-left)을 뒀는데,
+     이제 배경은 홈·뮤직비주얼에서만 돌므로 나머지는 여백이 자리만 좁힌다. */
+  #historyTab, #slideTab, #musicTab, #charTab, #storyTab, #homeTab, #welcomeTab, #studioTab {
+    flex: 1; display: none; flex-direction: column; min-height: 0;
+    padding: 18px 26px; gap: 14px; overflow-y: auto;
+    margin-left: 0;
+  }
+  /* 뮤직비주얼만 왼쪽을 비워 배경 무늬가 보이게 둔다 */
+  #musicTab { margin-left: var(--stage-left); padding-left: 0; }
+  #historyTab.active, #slideTab.active, #musicTab.active, #charTab.active,
+  #storyTab.active, #homeTab.active, #welcomeTab.active { display: flex; }
+  #studioTab:not(.hidden) { display: flex; }
+
+  /* 🏠 작업실·🏡 홈은 화면을 꽉 쓴다.
+     작업실은 일하는 곳이라 여백이 아깝고, 홈은 자기 무늬를 따로 돌린다. */
+  /* 배경 무늬 단추는 배경을 실제로 쓰는 곳에서만 보인다 */
+  body:not(.bgOn) #bgToggle { display: none; }
+  /* 캐릭터 탭 */
+  #charStage { position: relative; width: 100%; max-width: 860px; aspect-ratio: 16/9;
+               border-radius: 14px; overflow: hidden; background: #17151a; margin: 0 auto; }
+  #charCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .poseGrid { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .poseCard { width: 128px; background: rgba(255,255,255,0.05); border-radius: 12px; padding: 8px;
+              text-align: center; border: 1px solid transparent; }
+  .poseCard.used { border-color: var(--color-electric-iris); }
+  .poseCard img { width: 100%; height: 84px; object-fit: contain;
+                  background: repeating-conic-gradient(#2a2730 0 25%, #201d26 0 50%) 0 0/16px 16px; border-radius: 8px; }
+  .poseCard select { width: 100%; margin-top: 6px; padding: 4px; font-size: 11.5px; }
+  .charRow { display: flex; gap: 10px; row-gap: 10px; align-items: center; flex-wrap: wrap;
+             margin: 10px 0; }
+  .charRow > * { flex: none; }
+
+  /* ── 한 줄에 놓인 것들은 키를 맞춘다 ──
+     기본 단추(47px)·작은 단추(35px)·입력칸(46px)이 그대로 섞이면 줄이 울퉁불퉁해 보인다.
+     크기로 나누던 위계는 색(강조 단추는 보라, 곁단추는 테두리만)이 이미 하고 있으므로
+     여기서는 **높이만** 하나로 모은다. */
+  .charRow > button,
+  .charRow > input:not([type="checkbox"]):not([type="file"]),
+  .charRow > select {
+    min-height: 38px; height: 38px; font-size: 14px; box-sizing: border-box;
+  }
+  .charRow > button { padding: 0 18px; }
+  .charRow > button.small { padding: 0 14px; font-size: 13.5px; }
+  .charRow > input:not([type="checkbox"]):not([type="file"]),
+  .charRow > select { padding: 0 13px; }
+
+  /* 체크박스가 브라우저 기본 13px 이라 누르기 힘들었다 */
+  input[type="checkbox"] {
+    width: 17px; height: 17px; accent-color: var(--color-electric-iris);
+    cursor: pointer; flex: none;
+  }
+  .mkCols { display: grid; grid-template-columns: 1fr 1.25fr; gap: 18px; align-items: start; margin-top: 14px; }
+  .mkCols > div { min-width: 0; }
+  /* 소제목 — 브랜드 보라 그대로는 어두운 바탕에서 3.8:1 이라 작은 글씨가 흐려 보인다.
+     한 단계 밝은 보라로 올려 4.5:1 을 넘긴다 (색감은 그대로 유지). */
+  .mkHead { font-size: 13px; color: #a98cff; margin: 0 0 8px; }
+  .vitem.sel { border-color: var(--color-electric-iris); background: rgba(128,82,255,0.12); }
+  .vitem { cursor: pointer; }
+  #mkCast .vthumb, #chList .vthumb { width: 44px; height: 44px; }
+  #mkShots .vitem { padding: 8px 12px; }
+  @media (max-width: 1100px) { .mkCols { grid-template-columns: 1fr; } }
+  /* 상태 관리 팝업 */
+  .modalBack { position: fixed; inset: 0; z-index: 9500; background: rgba(0,0,0,0.62);
+               display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .modalBox { background: #16141b; border: 1px solid rgba(255,255,255,0.12); border-radius: 18px;
+              padding: 18px 20px; width: min(1000px, 96vw); max-height: 90vh; overflow-y: auto;
+              box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .modalHead { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600;
+               margin-bottom: 14px; }
+  .stCols { display: grid; grid-template-columns: 320px 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 820px) { .stCols { grid-template-columns: 1fr; } }
+  .tagBar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .tagChip { font-size: 11.5px; padding: 3px 10px; border-radius: 999px; cursor: pointer;
+             background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+             color: var(--color-silver-mist); }
+  .tagChip.on { background: var(--color-electric-iris); border-color: transparent; color: #fff; }
+  .mvRow {
+    display: flex; align-items: center; gap: 10px; font-size: 14px;
+    background: rgba(255,255,255,0.04); border-radius: 14px; padding: 9px 14px;
+  }
+  .mvRow.now { background: rgba(128,82,255,0.28); }
+  .mvRow .t { color: var(--color-saffron-spark); width: 56px; flex-shrink: 0; }
+  .mvRow .ly { flex: 1; color: var(--color-silver-mist); overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }
+  .mvRow select { width: 150px; }
+  .mvRow .sh { width: 108px; flex-shrink: 0; font-size: 12px; color: var(--color-ash-gray);
+               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 왼쪽(가사)과 오른쪽(타임라인) 상자를 완전히 같은 크기로 맞춘다 */
+  .mvSplit { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  .mvSplit .mvPane { min-width: 0; display: flex; flex-direction: column; }
+  .mvSplit .mvPane > label { min-height: 22px; }
+  .mvSplit #mvLyrics, .mvSplit #mvTimeline {
+    box-sizing: border-box; height: 380px; min-height: 380px; max-height: 380px;
+    overflow-y: auto; resize: none;
+  }
+  #mvTimeline {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 8px; border-radius: 12px;
+    background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.08);
+  }
+  #mvTimeline:empty::after {
+    content: "[👁 렌더링 보기]를 누르면 몇 초에 어떤 형상이 나오는지 여기에 표시됩니다.";
+    color: var(--color-ash-gray); font-size: 12.5px; text-align: center; padding: 24px 10px;
+  }
+  @media (max-width: 900px) { .mvSplit { grid-template-columns: 1fr; } }
+  /* 슬라이더 + 숫자 입력 (0~100 감도, 초 직접 입력) */
+  .numRow { display: flex; align-items: center; gap: 10px; }
+  .numRow input[type="range"] {
+    flex: 1; min-width: 0; width: auto; padding: 0; height: 22px; margin: 0;
+    background: transparent; accent-color: var(--color-electric-iris); cursor: pointer;
+  }
+  .numRow input[type="number"] { width: 76px; flex-shrink: 0; text-align: right; }
+  .numRow .unit { font-size: 12px; color: var(--color-ash-gray); flex-shrink: 0; }
+  main.hidden { display: none; }
+  .slideItem { display: flex; align-items: center; gap: 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 12.5px; }
+  .slideItem img { width: 56px; height: 34px; object-fit: cover; border-radius: 6px; }
+  .slideItem .sname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slideItem button { padding: 4px 9px; font-size: 12px; }
+  .slideItem select { width: auto; padding: 5px 8px; font-size: 12px; }
+  .transRow {
+    display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 34px;
+    font-size: 12px; color: var(--muted); flex-wrap: wrap;
+  }
+  .transRow select { width: auto; padding: 4px 8px; font-size: 12px; background: var(--panel); }
+  #histToolbar, .histToolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #histToolbar select { width: auto; min-width: 160px; }
+  #histPlayerWrap { display: none; }
+  #histPlayer { width: 100%; max-width: 720px; border-radius: 10px; background: black; display: block; margin: 0 auto; }
+  .vgroup { margin-top: 6px; }
+  .vgroup h3 { font-size: 13px; color: var(--accent); margin: 12px 0 8px; }
+  .vlist { display: flex; flex-direction: column; gap: 8px; }
+  .vitem {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; display: flex; align-items: center; gap: 12px; font-size: 13px; flex-wrap: wrap;
+  }
+  .vitem .vname { font-weight: 600; cursor: pointer; }
+  .vitem .vname:hover { color: var(--accent); }
+  .vitem .vinfo { color: var(--muted); font-size: 12px; }
+  .vitem .vactions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .vitem select { width: 130px; padding: 5px 8px; font-size: 12px; }
+  .lockbtn { background: none; border: 1px solid var(--border); padding: 5px 10px; font-size: 13px; border-radius: 7px; }
+  .lockbtn.locked { color: var(--warn); border-color: #6b5416; }
+  .vthumb { width: 64px; height: 36px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); flex-shrink: 0; background: #000; }
+  #hoverPreview {
+    position: fixed; display: none; z-index: 99; pointer-events: none;
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    box-shadow: 0 10px 34px rgba(0,0,0,0.55); background: #000;
+  }
+  #hoverPreview img { display: block; width: 320px; }
+
+  /* 채팅 */
+  /* 텍스트 뒤에 은은한 어두운 판을 깔아 배경 파티클 위에서도 잘 읽히게 */
+  #chatPane, #queuePane, #workPane, #historyTab > .card, #slideTab > .card {
+    background: rgba(6,6,9,0.34);
+    backdrop-filter: blur(9px);
+    border-radius: 24px;
+  }
+  /* 배경이 비쳐도 글자는 또렷하게 — 텍스트에 옅은 그림자 */
+  #chatPane, #queuePane, #workPane, #historyTab, #slideTab {
+    text-shadow: 0 1px 4px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.7);
+  }
+  #historyTab > .card, #slideTab > .card { padding: 20px 22px; }
+  #chatPane {
+    width: 32%; min-width: 290px; display: flex; flex-direction: column;
+    border-right: none;
+  }
+  #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 92%; padding: 12px 16px; border-radius: 16px; font-size: 15.5px; line-height: 1.6; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: var(--color-electric-iris); border-bottom-right-radius: 6px; }
+  .msg.bot { align-self: flex-start; background: rgba(255,255,255,0.05); border: none; border-bottom-left-radius: 6px; }
+  .msg.thinking { color: var(--muted); font-style: italic; }
+  #chatForm { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border); }
+  #chatInput {
+    flex: 1; background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 11px 14px; font-size: 14px; outline: none; resize: none; font-family: inherit;
+  }
+  #chatInput:focus { border-color: var(--accent); }
+  button {
+    background: var(--color-electric-iris); color: #fff; border: none;
+    border-radius: 24px; padding: 13px 20px; font-size: 16px; font-weight: 600;
+    letter-spacing: 0.35px; cursor: pointer; font-family: inherit;
+    transition: opacity .15s ease;
+  }
+  button:hover { opacity: .85; }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button.ghost {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--color-silver-mist); font-weight: 400;
+  }
+  button.ghost:hover { color: var(--color-bone-white); border-color: rgba(255,255,255,0.28); }
+  button.ghost.on { color: var(--color-bone-white); border-color: var(--color-electric-iris); }
+  button.small { padding: 7px 15px; font-size: 14px; border-radius: 24px; }
+  button.danger { background: none; border: 1px solid var(--border); color: var(--err); font-weight: 400; }
+  button.warn { background: var(--color-saffron-spark); color: #1a1200; }
+
+  /* 워크플로우 편집 */
+  #workPane { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  /* 큐 */
+  #queuePane {
+    width: 30%; min-width: 300px; border-left: none;
+    display: flex; flex-direction: column; overflow-y: auto; padding: 18px; gap: 14px;
+  }
+  main { gap: 10px; padding: 0 24px 14px 0; }
+  #studioTab { padding: 18px 26px; }
+  .card {
+    background: transparent; border: none; border-radius: 24px;
+    padding: 18px 4px; flex-shrink: 0;
+  }
+  #queuePane .card { background: transparent; }
+  .card h2 {
+    font-size: 18px; color: var(--color-bone-white); font-weight: 400;
+    margin-bottom: 18px; text-transform: none; letter-spacing: -0.36px;
+  }
+  label {
+    display: block; font-size: 14px; color: var(--color-silver-mist);
+    margin: 12px 0 5px; font-weight: 400; letter-spacing: 0.2px;
+  }
+  textarea, input, select {
+    width: 100%; background: rgba(255,255,255,0.045); border: 1px solid transparent;
+    color: var(--text); border-radius: 12px; padding: 11px 14px; font-size: 15px;
+    font-family: inherit; font-weight: 400; outline: none;
+  }
+  #queuePane textarea, #queuePane input, #queuePane select { background: rgba(255,255,255,0.045); }
+  textarea:focus, input:focus, select:focus {
+    border-color: var(--color-electric-iris); background: rgba(255,255,255,0.07);
+  }
+  select option { background: #0a0a0a; color: var(--text); }
+  textarea { resize: vertical; min-height: 60px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; }
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  .row button { flex: 1; }
+  .hint { font-size: 14px; color: var(--color-silver-mist); line-height: 1.65; }
+  details { margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; padding: 0 12px 4px; }
+  details summary { cursor: pointer; font-size: 12.5px; color: var(--muted); font-weight: 600; padding: 10px 0; user-select: none; }
+  details[open] summary { border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+  #editBanner {
+    display: none; background: #3b2f10; border: 1px solid #6b5416; color: var(--warn);
+    border-radius: 10px; padding: 9px 12px; font-size: 12.5px; margin-bottom: 10px;
+  }
+  #imgPreviewWrap { display: none; margin-top: 8px; position: relative; }
+  #imgPreview { max-width: 160px; border-radius: 8px; border: 1px solid var(--border); display: block; }
+
+  /* 노드 그래프 뷰 */
+  .viewToggle { display: flex; gap: 4px; margin-left: auto; }
+  .viewToggle button { padding: 4px 10px; font-size: 11.5px; border-radius: 7px; background: var(--panel2); border: 1px solid var(--border); color: var(--muted); }
+  .viewToggle button.on { color: var(--text); border-color: var(--accent); }
+  .cardHead { display: flex; align-items: center; margin-bottom: 12px; }
+  .cardHead h2 { margin-bottom: 0; }
+  #graphWrap {
+    display: none; position: relative; height: 660px; overflow: auto;
+    background: #0b0d12;
+    background-image: linear-gradient(#151922 1px, transparent 1px), linear-gradient(90deg, #151922 1px, transparent 1px);
+    background-size: 24px 24px;
+    border: 1px solid var(--border); border-radius: 10px;
+  }
+  #graphSvg { position: absolute; top: 0; left: 0; pointer-events: none; }
+  .gnode {
+    position: absolute; width: 230px; background: #1d212b; border: 1px solid #343c4d;
+    border-radius: 9px; font-size: 11px; box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+  }
+  .gtitle { padding: 6px 10px; font-weight: 600; font-size: 11.5px; color: #cdd3e0; border-bottom: 1px solid #2b3240; }
+  .grow { position: relative; height: 19px; line-height: 19px; padding: 0 12px; color: #8b93a5; font-size: 10.5px; }
+  .grow.out { text-align: right; }
+  .gdot { position: absolute; width: 9px; height: 9px; border-radius: 50%; top: 5px; border: 1.5px solid #0b0d12; }
+  .grow.in .gdot { left: -5px; }
+  .grow.out .gdot { right: -5px; }
+  .gfields { padding: 7px 9px; display: flex; flex-direction: column; gap: 4px; }
+  .gfields label { margin: 0; font-size: 10px; color: #6d7587; }
+  .gfields input, .gfields select, .gfields textarea {
+    padding: 4px 7px; font-size: 11px; border-radius: 6px; background: #262c38; border: 1px solid #343c4d;
+  }
+  .gfields textarea { min-height: 52px; resize: vertical; }
+  .gstatic { background: #262c38; border-radius: 6px; padding: 4px 7px; color: #8b93a5; font-size: 10.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  .chip {
+    font-size: 14px; padding: 7px 13px; border-radius: 20px; cursor: pointer; user-select: none;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--color-silver-mist);
+  }
+  .chip:hover { color: var(--text); }
+  .chip.on { background: linear-gradient(135deg, #2c3a63, #35306b); border-color: var(--accent); color: var(--text); }
+  .chipCat { font-size: 11.5px; font-weight: 600; color: var(--accent); margin: 10px 0 2px; }
+  .qm {
+    display: inline-block; width: 15px; height: 15px; line-height: 15px; text-align: center;
+    border-radius: 50%; background: var(--panel2); border: 1px solid var(--border);
+    /* 브랜드 보라를 그대로 쓰면 어두운 바탕에서 4.3:1 로 살짝 모자란다 — 한 단계 밝은 보라로 */
+    color: #a98cff; font-size: 10.5px; font-weight: 700; margin-left: 5px; cursor: help;
+  }
+  #tipBox {
+    position: fixed; display: none; z-index: 100; max-width: 340px;
+    background: #20242e; border: 1px solid var(--accent); border-radius: 10px;
+    padding: 11px 13px; font-size: 12px; line-height: 1.65; color: var(--text);
+    box-shadow: 0 10px 34px rgba(0,0,0,0.55); white-space: pre-line;
+  }
+  .zoombar { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
+  .zoombar button {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+    padding: 4px 11px; font-size: 11.5px; border-radius: 7px;
+  }
+  .zoombar button.on { color: var(--text); border-color: var(--accent); }
+
+  /* 큐 아이템 */
+  #queueList { display: flex; flex-direction: column; gap: 8px; }
+  .qitem {
+    background: rgba(255,255,255,0.045); border: none; border-radius: 18px;
+    padding: 13px 16px; font-size: 14.5px;
+  }
+  .qitem.editing { border-color: var(--warn); }
+  .qitem .qtop { display: flex; align-items: center; gap: 8px; }
+  .qitem .qlabel { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qitem .qmeta { color: var(--color-silver-mist); font-size: 13.5px; margin-top: 4px; }
+  .qbtns { display: flex; gap: 6px; margin-top: 7px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; flex-shrink: 0; }
+  .badge.wait { background: #2a3140; color: var(--muted); }
+  .badge.running { background: #3b2f10; color: var(--warn); }
+  .badge.done { background: #10331e; color: var(--ok); }
+  .badge.error { background: #3a1414; color: var(--err); }
+  video { width: 100%; border-radius: 10px; background: black; display: none; margin-top: 10px; }
+  #queueStatus { font-size: 12.5px; color: var(--muted); text-align: center; min-height: 18px; margin-top: 8px; }
+  #queueStatus.err { color: var(--err); }
+  #queueStatus.ok { color: var(--ok); }
+
+  /* 배경 켜기/정지/끄기 토글 (상단바) */
+  #bgToggle {
+    width: auto; padding: 6px 14px; font-size: 12.5px; font-weight: 600;
+    border-radius: 999px; cursor: pointer; margin-left: auto; margin-right: 10px;
+    background: rgba(255,255,255,0.06); color: var(--color-silver-mist);
+    border: 1px solid rgba(255,255,255,0.14);
+  }
+  #bgToggle:hover { border-color: var(--color-electric-iris); color: #fff; }
+  #bgToggle.still { color: var(--color-saffron-spark); }
+  #bgToggle.off { color: var(--color-ash-gray); }
+
+  /* 히스토리 하위 탭 */
+  #histSubtabs, #chSubtabs { display: flex; gap: 8px; row-gap: 10px; flex-wrap: wrap;
+                             margin-bottom: 20px; }
+  .chPane > .charRow:first-child, .chPane > .grid:first-child { margin-top: 6px; }
+  .chPane > h3.mkHead:first-child { margin-top: 4px; }
+  .subtab {
+    background: rgba(255,255,255,0.05); color: var(--color-silver-mist);
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 999px;
+    padding: 7px 18px; font-size: 13.5px; font-weight: 600; cursor: pointer; width: auto;
+  }
+  .subtab.on { background: var(--color-electric-iris); border-color: transparent; color: #fff; }
+  /* 고른 탭은 바탕이 보라로 바뀐다 — 그 안의 흐린 글씨(개수)는 같이 밝혀야 읽힌다
+     (은회색 그대로 두면 보라 위에서 2.4:1 밖에 안 돼 거의 안 보였다) */
+  .subtab.on .hint { color: rgba(255,255,255,0.88); }
+  #histSelBar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 8px 10px; margin-bottom: 10px; border-radius: 10px;
+    background: rgba(255,255,255,0.04); font-size: 13px;
+  }
+  #histSelBar button { width: auto; }
+  .vsel { width: auto !important; margin: 0 6px 0 0; flex-shrink: 0; cursor: pointer; }
+
+  /* 뮤직비주얼 전체화면 무대 */
+  body.stageOn header, body.stageOn main, body.stageOn #slideTab,
+  body.stageOn #musicTab, body.stageOn #historyTab { display: none !important; }
+  #stage {
+    position: fixed; inset: 0; z-index: 9000;
+    display: flex; flex-direction: column; justify-content: space-between;
+    background: transparent; pointer-events: none;
+  }
+  #stage > * { pointer-events: auto; }
+  #stageTop {
+    display: flex; align-items: center; gap: 10px; padding: 16px 22px;
+    font-size: 15px; font-weight: 600; color: var(--color-silver-mist);
+    text-shadow: 0 2px 12px #000;
+  }
+  #stageTop button {
+    width: 40px; height: 40px; border-radius: 50%; font-size: 16px;
+    background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.18);
+    color: #fff; cursor: pointer; padding: 0;
+  }
+  #stageTop button:hover { background: var(--color-electric-iris); }
+  #stageBottom {
+    padding: 26px 8vw 40px; text-align: center;
+    background: linear-gradient(to top, rgba(0,0,0,0.72), rgba(0,0,0,0));
+  }
+  #stageWord {
+    font-size: 15px; letter-spacing: 3px; color: var(--color-saffron-spark);
+    min-height: 20px; margin-bottom: 10px;
+  }
+  #stageLyric {
+    font-size: 34px; font-weight: 700; line-height: 1.4; color: #fff;
+    min-height: 48px; text-shadow: 0 4px 24px #000, 0 0 40px rgba(128,82,255,0.5);
+    transition: opacity .3s;
+  }
+  #stageBarWrap {
+    height: 5px; background: rgba(255,255,255,0.15); border-radius: 4px;
+    overflow: hidden; margin: 22px auto 8px; max-width: 720px;
+  }
+  #stageBar { height: 100%; width: 0%; background: var(--color-electric-iris); }
+  #stageTime { font-size: 12.5px; color: var(--color-ash-gray); }
+  @media (max-width: 720px) { #stageLyric { font-size: 24px; } }
+</style>
+</head>
+<body>
+<canvas id="bgCanvas"></canvas>
+
+<!-- 뮤직비주얼 전체화면 팝업: 배경 입자 + 음악 + 하단 가사만 -->
+<div id="stage" style="display:none">
+  <div id="stageTop">
+    <span id="stageTitle"></span>
+    <span style="flex:1"></span>
+    <button id="stagePause" type="button" title="일시정지 / 재생">⏸</button>
+    <button id="stageClose" type="button" title="닫기 (ESC)">✕</button>
+  </div>
+  <div id="stageBottom">
+    <div id="stageWord"></div>
+    <div id="stageLyric"></div>
+    <div id="stageBarWrap"><div id="stageBar"></div></div>
+    <div id="stageTime"></div>
+  </div>
+</div>
+
+<header>
+  <h1>심심 <span>공작소</span></h1>
+  <nav id="tabs">
+    <button class="tab" data-tab="welcomeTab">🏡 홈</button>
+    <button class="tab" data-tab="homeTab">🏠 작업실</button>
+    <button class="tab" data-tab="historyTab">🗂 히스토리</button>
+      <button class="tab" data-tab="charTab">🎨 자산</button>
+    <button class="tab" data-tab="musicTab">🎵 뮤직비주얼</button>
+    <button class="tab" data-tab="slideTab">🎞 슬라이드쇼</button>
+    <button class="tab" data-tab="studioTab">🎨 스튜디오</button>
+  </nav>
+  <button id="bgToggle" type="button" title="배경 애니메이션 (느린 PC에서는 정지·끔을 쓰세요)">🌌 배경 움직임</button>
+  <div id="comfyState">엔진 확인 중…</div>
+</header>
+<main id="studioTab" class="hidden"></main>
+<main id="welcomeTab"></main>
+<main id="homeTab"></main>
+
+<!-- 히스토리 탭 -->
+<div id="hoverPreview"><img id="hoverPreviewImg"></div>
+
+<!-- 영역 지정 팝업 (시네마그래프) -->
+<div id="regionModal" style="display:none; position:fixed; inset:0; z-index:210; background:rgba(0,0,0,0.6); align-items:center; justify-content:center">
+  <div class="card" style="max-width:600px; width:94%; max-height:90vh; overflow-y:auto; border-color:var(--ok)">
+    <h2>🎯 움직일 부분을 드래그로 지정하세요 <span class="hint">— 지정한 부분만 움직이고 나머지는 완전 정지</span></h2>
+    <canvas id="regionCanvas" style="width:100%; border-radius:10px; border:1px solid var(--border); cursor:crosshair; touch-action:none"></canvas>
+    <div class="grid" style="margin-top:10px">
+      <div style="grid-column: span 2"><label>생성 방식</label><select id="regionMode">
+        <option value="ai" selected>🤖 AI 생성 (Fun-InP) — 시작·끝을 원본에 고정해 자연스럽게 움직임 · 장당 2~4분</option>
+        <option value="proc">🎯 정밀 변형 — 지정 부위를 정확히 밀고 당김 (GPU 불필요 · 몇 초)</option>
+      </select></div>
+    </div>
+    <div class="grid" id="regionAiOpts" style="margin-top:8px">
+      <div><label>무엇이 움직이나요?</label><select id="regionAiMotion">
+        <option value="the ears twitch subtly" selected>👂 귀 움찔</option>
+        <option value="the tail wags gently from side to side">🐕 꼬리만 흔들기</option>
+        <option value="the head bobs up and down slightly">🙆 고개만 까딱</option>
+        <option value="the whole body trembles and shivers slightly">🥶 부들부들 떨기</option>
+        <option value="the eyes blink slowly">👁 눈 깜빡임</option>
+        <option value="the mouth moves as if talking">💬 입 움직임</option>
+        <option value="the head tilts slightly">🙂 고개 갸웃</option>
+        <option value="hair sways very softly">💇 머리카락 날림</option>
+        <option value="sparkles twinkle softly">✨ 반짝임</option>
+        <option value="leaves sway gently">🍃 잎 흔들림</option>
+        <option value="clouds drift very slowly">☁ 구름 흐름</option>
+        <option value="__custom">✍ 직접 입력…</option>
+      </select></div>
+      <div id="regionAiCustomWrap" style="display:none"><label>직접 입력 (영어 권장)</label><input id="regionAiCustom" placeholder="예: the flag waves gently"></div>
+    </div>
+    <div class="grid" id="regionProcOpts" style="margin-top:8px; display:none">
+      <div><label>움직임 종류</label><select id="regionType">
+        <option value="lift" selected>⬆ 들어올렸다 내리기 (귀·팔 — 추천)</option>
+        <option value="wiggle">🌀 흔들흔들 (귀·꼬리·머리)</option>
+        <option value="bob">↕ 위아래 까딱</option>
+        <option value="sway">↔ 좌우 살랑</option>
+        <option value="pulse">💓 두근두근 (커졌다 작아졌다)</option>
+      </select></div>
+      <div><label>강도</label><select id="regionStrength">
+        <option value="1">약하게</option><option value="2" selected>보통</option><option value="3">강하게</option>
+      </select></div>
+      <div><label>주기 (한 번 왕복 시간)</label><select id="regionPeriod">
+        <option value="1.5">1.5초 (빠르게)</option><option value="2" selected>2초</option>
+        <option value="3">3초 (느긋하게)</option><option value="4">4초</option>
+      </select></div>
+    </div>
+    <div class="row">
+      <button id="regionSaveBtn">저장</button>
+      <button class="ghost small" id="regionClearBtn" style="flex:0.6">영역 지우기</button>
+      <button class="ghost small" id="regionCancelBtn" style="flex:0.4">취소</button>
+    </div>
+  </div>
+</div>
+
+<!-- 움직임 선택 팝업 -->
+<div id="motionModal" style="display:none; position:fixed; inset:0; z-index:200; background:rgba(0,0,0,0.55); align-items:center; justify-content:center">
+  <div class="card" style="max-width:640px; width:94%; max-height:88vh; overflow-y:auto; border-color:var(--accent)">
+    <h2>🎬 이 이미지의 움직임 선택</h2>
+    <div style="border:1px solid var(--ok); border-radius:10px; padding:12px; margin-bottom:12px">
+      <div style="font-size:13px; font-weight:600; margin-bottom:6px">🎯 정밀 영역 움직임 <span style="color:var(--ok)">(추천)</span></div>
+      <div class="hint" style="margin-bottom:8px">움직일 부분(귀·꼬리 등)을 드래그로 지정하면 <b>그 부분만</b> 움직입니다.<br>🤖 <b>AI 생성</b>은 Fun-InP 모델이 시작·끝 프레임을 원본에 고정한 채 중간 움직임을 만들어 그림이 변형되지 않습니다.</div>
+      <button class="ghost" id="openRegionBtn" type="button" style="width:100%">🎯 영역 지정하기</button>
+    </div>
+    <div style="font-size:13px; font-weight:600; margin-bottom:2px">🎮 AI 생성 움직임 <span class="hint">(GPU 체크 필요 · 1~2개만 · 장당 3~6분)</span></div>
+    <div id="motionModalChips"></div>
+    <label>✍ 직접 입력 (선택 — 영어 권장)</label>
+    <input id="motionCustom" placeholder="예: the flag waves gently">
+    <div class="grid" style="margin-top:10px">
+      <div><label>움직임 텀 (반복 주기)</label><select id="motionInterval">
+        <option value="0" selected>자연스럽게 (연속)</option>
+        <option value="2">2초마다 한 번</option>
+        <option value="3">3초마다 한 번</option>
+        <option value="4">4초마다 한 번</option>
+      </select></div>
+    </div>
+    <div class="row">
+      <button id="motionSaveBtn">저장</button>
+      <button class="ghost small" id="motionNoneBtn" style="flex:0.7">움직임 없음으로</button>
+      <button class="ghost small" id="motionCancelBtn" style="flex:0.4">취소</button>
+    </div>
+  </div>
+</div>
+
+<!-- 고급 생성 설정 팝업 -->
+<div id="genOptsModal" style="display:none; position:fixed; inset:0; z-index:200; background:rgba(0,0,0,0.55); align-items:center; justify-content:center">
+  <div class="card" style="max-width:560px; width:92%; max-height:85vh; overflow-y:auto; border-color:var(--accent)">
+    <h2>⚙ GPU 생성 고급 설정 — 그림체 · 샘플링</h2>
+    <label>그림체 프리셋 (클릭해서 선택)</label>
+    <div class="chips" id="styleChips">
+      <span class="chip on" data-style="2D anime style illustration, cel shading, clean lineart, detailed, high quality">🎬 애니 셀셰이딩 (추천)</span>
+      <span class="chip" data-style="2D webtoon style illustration, soft pastel colors, clean lineart, cozy warm mood, high quality">📱 웹툰 파스텔</span>
+      <span class="chip" data-style="hand-painted 2D animation style, soft watercolor background, warm gentle lighting, Ghibli-inspired, high quality">🌿 지브리풍 수채</span>
+      <span class="chip" data-style="storybook illustration style, soft textured brush strokes, warm cozy colors, whimsical, high quality">📖 동화책 일러스트</span>
+      <span class="chip" data-style="bold outline cartoon style, vibrant flat colors, clean simple shapes, high quality">🖍 카툰 (굵은 선)</span>
+    </div>
+    <label>직접 입력 (선택 — 위 프리셋 대신 사용)</label>
+    <input id="genStyleCustom" placeholder="예: chibi style, pastel colors, sparkly...">
+    <div class="grid" style="margin-top:10px">
+      <div><label>샘플러</label><select id="genSampler">
+        <option value="uni_pc" selected>uni_pc (추천)</option><option>euler</option><option>euler_ancestral</option>
+        <option>dpmpp_2m</option><option>dpmpp_2m_sde</option><option>ddim</option><option>lcm</option><option>res_multistep</option>
+      </select></div>
+      <div><label>스케줄러</label><select id="genScheduler">
+        <option value="simple" selected>simple (추천)</option><option>normal</option><option>karras</option>
+        <option>exponential</option><option>sgm_uniform</option><option>beta</option>
+      </select></div>
+      <div><label>스텝</label><input id="genSteps" type="number" min="4" max="30" value="20"></div>
+      <div><label>CFG</label><input id="genCfg" type="number" min="1" max="10" step="0.5" value="5"></div>
+      <div><label>Shift (움직임 강도)</label><input id="genShift" type="number" min="1" max="12" step="0.5" value="4"></div>
+      <div><label>떨림 제거</label><select id="genStab">
+        <option value="0">안 함</option><option value="1">약</option><option value="2">중</option><option value="3" selected>강 (추천)</option>
+      </select></div>
+    </div>
+    <label style="display:flex; align-items:center; gap:7px; margin-top:10px; cursor:pointer">
+      <input type="checkbox" id="genTurbo" style="width:auto"> <b>🚀 터보 모드</b>
+      <span class="hint">— 6스텝 초고속 (품질 소폭↓)</span>
+    </label>
+    <div class="row">
+      <button id="genOptsSaveBtn">저장</button>
+      <button class="ghost small" id="genOptsCloseBtn" style="flex:0.4">취소</button>
+    </div>
+  </div>
+</div>
+
+<!-- 슬라이드쇼 탭 -->
+<div id="slideTab"></div>
+
+<!-- 뮤직비주얼 탭 -->
+<div id="musicTab"></div>
+
+<div id="charTab"></div>
+
+<div id="historyTab"></div>
+<!-- 배경 파티클은 app/js/particles.js 로 분리했습니다 -->
+<script src="/p/js/particles.js"></script>
+<script type="module">import "/p/js/core.js";</script>
+<script>
+
+const $ = id => document.getElementById(id);
+
+/* 스튜디오는 app/js/tabs/studio.js 로 분리했습니다 */
+
+/* ---------- 탭 전환 ----------
+   새로 만드는 탭은 화면(app/views/*.html)과 기능(app/js/tabs/*.js)을 따로 두고
+   그 탭을 처음 열 때만 불러온다 → 첫 화면이 가벼워진다. */
+const LAZY_TABS = { charTab: "character", musicTab: "music", historyTab: "history",
+                    slideTab: "slideshow", studioTab: "studio", homeTab: "home",
+                    welcomeTab: "welcome" };
+const loadedTabs = new Set();
+window.ensureTab = ensureTab;
+async function ensureTab(id) {
+  if (!LAZY_TABS[id] || loadedTabs.has(id)) return;
+  loadedTabs.add(id);
+  const el = $(id), name = LAZY_TABS[id];
+  try {
+    el.innerHTML = await (await fetch(`/p/views/${name}.html?t=${Date.now()}`)).text();
+    const mod = await import(`/p/js/tabs/${name}.js?t=${Date.now()}`);
+    await mod.mount(el);
+  } catch (e) {
+    loadedTabs.delete(id);
+    el.innerHTML = `<div class="card"><h2>불러오지 못했습니다</h2>
+      <div class="hint">${e.message}</div></div>`;
+  }
+}
+
+/* 뒤로가기 길잡이 — 탭을 옮길 때마다 되돌아갈 걸음을 쌓는다.
+   예전에는 replaceState 라 뒤로가기가 앱을 통째로 떠났다.
+   (이 스크립트는 모듈이 아니라 최상위 await 를 못 쓴다. 늦게 실어 오고 늘 있는지 본다.) */
+let NAV = null;
+import("/p/js/ui/nav.js").then(m => { NAV = m; m.navInit(); });
+let 지금탭 = null;
+
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => 탭보이기(btn));
+});
+
+/** @param 짓 {걸음:false} 뒤로가기가 부른 것이라 새 걸음을 안 쌓는다 */
+function 탭보이기(btn, 짓 = {}) {
+    const 이전 = 지금탭;
+    document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const target = btn.dataset.tab;
+    $("studioTab").classList.toggle("hidden", target !== "studioTab");
+    $("historyTab").classList.toggle("active", target === "historyTab");
+    $("slideTab").classList.toggle("active", target === "slideTab");
+    $("musicTab").classList.toggle("active", target === "musicTab");
+    $("charTab").classList.toggle("active", target === "charTab");
+    $("homeTab").classList.toggle("active", target === "homeTab");
+    $("welcomeTab").classList.toggle("active", target === "welcomeTab");
+    // 작업실에서는 여백·배경 무늬를 없애고 화면을 꽉 쓴다
+    document.body.classList.toggle("workshop", target === "homeTab");
+    document.body.classList.toggle("welcome", target === "welcomeTab");
+    배경정하기(target);
+    document.body.classList.toggle("welcome", target === "welcomeTab");
+    if (LAZY_TABS[target]) ensureTab(target);
+
+    /* 주소에 남겨 둔다 — 새로 고쳐도 보던 곳으로 돌아오고, 링크로 곧장 열 수 있다.
+       처음 한 번과 뒤로가기로 온 것은 **걸음을 쌓지 않는다** (쌓으면 뒤로가 헛돈다). */
+    const 주소 = "#" + target + location.search;
+    지금탭 = target;
+    if (짓.걸음 === false || !이전 || !NAV) {
+      try { history.replaceState({ ...(history.state || {}), 공작소깊이: NAV ? NAV.깊이() : 0 },
+                                 "", 주소); } catch {}
+    } else if (이전 !== target) {
+      const 돌아갈단추 = document.querySelector(`.tab[data-tab="${CSS.escape(이전)}"]`);
+      NAV.밀기("탭:" + target,
+               () => { if (돌아갈단추) 탭보이기(돌아갈단추, { 걸음: false }); },
+               주소);
+    }
+}
+
+/** 주소의 `#탭이름` 이 가리키는 단추 (`…/#charTab`) — 없으면 null */
+function 주소가리키는탭() {
+  const 이름 = (location.hash || "").replace(/^#/, "").split("?")[0];
+  try { return 이름 ? document.querySelector(`.tab[data-tab="${CSS.escape(이름)}"]`) : null; }
+  catch { return null; }
+}
+
+/* ---------- 배경 무늬는 쓰는 곳에서만 돌린다 ----------
+   화면 전체를 덮는 파티클은 그리는 값이 만만치 않다. 홈과 뮤직비주얼에서만 쓰고
+   나머지 탭에서는 아예 멈춰(모드 off) 브라우저 힘을 아낀다.
+   사용자가 정한 설정은 따로 기억해 두었다가 돌아올 때 되살린다. */
+const BG_TABS = new Set(["welcomeTab", "musicTab"]);
+function 배경정하기(target) {
+  const P = window.Particles;
+  if (!P) return;
+  const 쓸곳 = BG_TABS.has(target);
+  document.body.classList.toggle("bgOn", 쓸곳);
+  if (쓸곳) {
+    const 저장 = localStorage.getItem("bgWanted") || "still";
+    if (P.getMode() !== 저장) P.setMode(저장);
+  } else if (P.getMode() !== "off") {
+    localStorage.setItem("bgWanted", P.getMode());   // 어떤 설정이었는지 기억
+    P.setMode("off");                                // 루프까지 멈춘다
+  }
+}
+
+/* 슬라이드쇼는 app/js/tabs/slideshow.js 로 분리했습니다 */
+
+/* 히스토리는 app/js/tabs/history.js 로 분리했습니다 */
+
+
+/* ---------- 옵션 도움말 툴팁 (모든 탭 공용) ---------- */
+const tipBox = document.createElement("div");
+tipBox.id = "tipBox";
+document.body.appendChild(tipBox);
+document.addEventListener("mouseover", e => {
+  if (!e.target.classList || !e.target.classList.contains("qm")) return;
+  tipBox.textContent = e.target.dataset.tip;
+  tipBox.style.display = "block";
+  const r = e.target.getBoundingClientRect();
+  const x = Math.min(r.right + 8, window.innerWidth - 360);
+  const y = Math.min(r.top - 8, window.innerHeight - 260);
+  tipBox.style.left = Math.max(8, x) + "px";
+  tipBox.style.top = Math.max(8, y) + "px";
+});
+document.addEventListener("mouseout", e => {
+  if (e.target.classList && e.target.classList.contains("qm")) tipBox.style.display = "none";
+});
+
+
+/* 뮤직비주얼은 app/js/tabs/music.js 로 분리했습니다 */
+
+/* ---------- 배경 애니메이션 켜기 / 정지 / 끄기 ---------- */
+const BG_MODES = [
+  { m: "on",    label: "🌌 배경 움직임", cls: "" },
+  { m: "still", label: "⏸ 배경 정지",   cls: "still" },
+  { m: "off",   label: "🚫 배경 끔",     cls: "off" },
+];
+function paintBgToggle(m) {
+  const info = BG_MODES.find(x => x.m === m) || BG_MODES[0];
+  const b = $("bgToggle");
+  b.textContent = info.label;
+  b.className = info.cls;
+}
+$("bgToggle").addEventListener("click", () => {
+  const cur = window.Particles.getMode();
+  const next = BG_MODES[(BG_MODES.findIndex(x => x.m === cur) + 1) % BG_MODES.length].m;
+  window.Particles.setMode(next);
+  localStorage.setItem("bgWanted", next);      // 다른 탭에 갔다 와도 이 설정을 지킨다
+});
+document.addEventListener("bgmode", e => paintBgToggle(e.detail));
+paintBgToggle(window.Particles.getMode());
+
+/* ---------- 엔진 상태 ---------- */
+async function checkComfy() {
+  try {
+    const r = await fetch("/api/comfy_ready");
+    const d = await r.json();
+    const el = $("comfyState");
+    if (d.ready) { el.textContent = "● 생성 엔진 준비됨"; el.className = "ok"; }
+    else { el.textContent = "○ 생성 엔진 시작 중… (잠시만요)"; el.className = ""; setTimeout(checkComfy, 3000); }
+  } catch { setTimeout(checkComfy, 3000); }
+}
+
+checkComfy();
+// 첫 탭 — 주소에 `#탭이름` 이 있으면 그리로, 없으면 홈
+(주소가리키는탭() || document.querySelector('[data-tab="welcomeTab"]')).click();
+배경정하기("welcomeTab");
+</script>
+</body>
+</html>

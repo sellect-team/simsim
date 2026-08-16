@@ -1,0 +1,149 @@
+<!-- 🏠 작업실 — 두 겹으로 나뉜다.
+     ① 프로젝트 목록   ② 프로젝트 안 (아래쪽 단계 탭으로 일한다)
+     편집 프로그램의 짜임을 따라, 어디에 있는지가 늘 위에 보인다. -->
+
+<!-- ══ 어디에 있는지 (빵부스러기) ══ -->
+<div class="charRow" style="align-items:center; gap:8px">
+  <h2 style="margin:0; font-size:20px; cursor:pointer" id="wsHome">🏠 작업실</h2>
+  <span id="wsCrumb" class="hint"></span>
+  <span style="flex:1"></span>
+  <span class="hint" id="wsWhen"></span>
+  <button class="ghost small" id="wsLex" type="button"
+          title="대본·프로젝트에 쓸 수 있는 모든 낱말">📖 우리말 사전</button>
+  <button class="ghost small" id="wsRefresh" type="button">↻</button>
+</div>
+
+<div id="wsLexBox" style="display:none; margin-top:10px; max-height:420px; overflow-y:auto;
+     background:#1a1822; border-radius:12px; padding:14px"></div>
+
+<!-- 📚 프로젝트 그룹 (시리즈) — 만드는 일의 가장 바깥 단위 -->
+<div class="charRow" style="align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap">
+  <b style="font-size:14px">📚 시리즈</b>
+  <select id="wsGroup" style="max-width:220px"></select>
+  <button class="ghost small" id="wsGroupNew" type="button">＋ 새 시리즈</button>
+  <button class="ghost small" id="wsGroupEdit" type="button">✎ 이름</button>
+  <button class="ghost small danger" id="wsGroupDel" type="button">🗑</button>
+  <button class="ghost small" id="wsBulk" type="button"
+          title="캐릭터·배경·음악 파일을 여러 개 한 번에 올려 이 시리즈에 넣습니다"
+          >📥 자산 한 번에 올리기</button>
+  <span class="hint" id="wsGroupInfo"></span>
+</div>
+
+<!-- 📄 이 시리즈로 대본을 쓰게 해 주는 글 한 덩어리.
+     밖의 LLM(클로드·챗GPT·제미나이)에 통째로 주면 이 시리즈의 자산만 써서 대본을 짠다. -->
+<div class="charRow" style="align-items:center; gap:8px; margin-top:6px; padding:8px 10px;
+     background:#171520; border-radius:10px; flex-wrap:wrap">
+  <b style="font-size:13px">📄 이 시리즈로 대본 쓰기</b>
+  <span class="hint" id="wsMdInfo">문법 + 지금 쓸 수 있는 자산을 한 글에 담습니다</span>
+  <span style="flex:1"></span>
+  <button class="ghost small" id="wsMdView" type="button">👀 미리 보기</button>
+  <button class="ghost small" id="wsMdCopy" type="button"
+          title="LLM 채팅창에 그대로 붙여 넣으세요">📋 전체 복사</button>
+  <button id="wsMdDown" type="button"
+          title="MD 파일로 저장합니다 — 다른 곳에서 이 문법으로 숏츠 대본을 쓸 수 있습니다"
+          >📥 MD 내려받기</button>
+</div>
+
+<!-- ══════════ ① 프로젝트 목록 ══════════ -->
+<div id="wsList">
+  <div id="wsStats" class="charRow" style="gap:10px; flex-wrap:wrap; margin-top:10px"></div>
+
+  <div class="charRow" style="margin-top:12px; align-items:center">
+    <button id="wsNew">＋ 새 프로젝트</button>
+    <button class="ghost small" id="wsPaste" type="button"
+            title="프로젝트 문법으로 적은 글을 붙여 넣으면 한 번에 만듭니다">📥 글로 한 번에 만들기</button>
+    <span style="flex:1"></span>
+    <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; margin:0"
+           class="hint"><input type="checkbox" id="wsOnlyTodo" style="width:auto;margin:0"> 손볼 것만</label>
+  </div>
+
+  <h3 class="mkHead" style="margin-top:14px">📁 프로젝트 <span class="hint" id="wsCount"></span></h3>
+
+  <!-- 찾기·고르기 — 프로젝트가 수백 개가 되면 이게 없으면 못 씁니다 -->
+  <div class="charRow" style="align-items:center; gap:8px; margin:4px 0 8px">
+    <input id="wsFind" placeholder="🔍 이름·배우·배경으로 찾기" style="max-width:280px">
+    <select id="wsSort" style="max-width:150px">
+      <option value="최근">최근 고친 순</option>
+      <option value="이름">이름 순</option>
+      <option value="긴것">긴 것부터</option>
+      <option value="편많은">편 많은 순</option>
+      <option value="오래된">오래된 순</option>
+    </select>
+    <span style="flex:1"></span>
+    <button class="ghost small" id="wsView" type="button"
+            title="줄 목록으로 보면 한 화면에 훨씬 많이 들어갑니다">☰ 줄로 보기</button>
+  </div>
+
+  <div id="wsCards" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(210px,1fr));
+       gap:12px; margin-top:6px"></div>
+  <div class="charRow" style="justify-content:center; margin-top:10px">
+    <button class="ghost small" id="wsMore" type="button" style="display:none">더 보기</button>
+  </div>
+
+  <div class="mkCols" style="margin-top:18px; grid-template-columns:1.15fr 1fr">
+    <div>
+      <h3 class="mkHead">📦 부족한 그림 <span class="hint">— 모든 프로젝트에서 모았습니다</span></h3>
+      <div class="charRow">
+        <button class="ghost small" id="wsCopyAll" type="button">프롬프트 전부 복사</button>
+        <span class="hint" id="wsNeedInfo"></span>
+      </div>
+      <div id="wsNeeds" class="vlist" style="max-height:230px; overflow-y:auto"></div>
+    </div>
+    <div>
+      <h3 class="mkHead">🗂 전체 자산 <span class="hint">— 눌러서 관리</span></h3>
+      <div id="wsAssets" class="charRow" style="flex-wrap:wrap; gap:8px"></div>
+      <h3 class="mkHead" style="margin-top:14px">🌙 굽기 줄</h3>
+      <div class="charRow">
+        <button class="ghost small" id="wsBakeAll" type="button"
+                title="모든 프로젝트의 아직 안 구운 편을 차례로 굽습니다">🌙 준비된 것 전부 굽기</button>
+        <button class="ghost small" id="wsBakeStop" type="button">⏹ 멈추기</button>
+        <span class="hint" id="wsQueueInfo"></span>
+      </div>
+      <div id="wsQueue" class="vlist" style="max-height:180px; overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <!-- 🚨 손봐야 할 것 — 문제 있는 프로젝트만 모아 맨 아래에.
+       목록을 훑으며 하나씩 열어 보지 않아도 어디가 막혔는지 한눈에 보인다. -->
+  <div style="margin-top:18px; background:#1a1822; border-radius:12px; padding:12px">
+    <div class="charRow" style="align-items:center">
+      <h3 class="mkHead" style="margin:0">🚨 손봐야 할 것</h3>
+      <span class="hint" id="wsTroubleInfo">살펴보는 중…</span>
+      <span style="flex:1"></span>
+      <button class="ghost small" id="wsTroubleRefresh" type="button">↻ 다시 살펴보기</button>
+    </div>
+    <div id="wsTrouble" class="vlist" style="max-height:340px; overflow-y:auto; margin-top:8px"></div>
+  </div>
+</div>
+
+<!-- ══════════ ② 프로젝트 안 ══════════ -->
+<div id="wsDetail" style="display:none">
+  <div class="charRow" style="align-items:center; margin-top:8px">
+    <input id="wsPjName" placeholder="프로젝트 이름" style="max-width:280px">
+    <span class="hint" id="wsPjInfo"></span>
+    <span style="flex:1"></span>
+    <button class="ghost small" id="wsPjCopyText" type="button"
+            title="이 프로젝트 전체를 문법 글로 복사합니다">📋 글로 복사</button>
+    <button class="ghost small" id="wsPjDup" type="button"
+            title="통째로 베낍니다 — 시리즈물은 이게 기본입니다">⧉ 복제</button>
+    <button class="ghost small danger" id="wsPjDel" type="button">🗑 프로젝트 삭제</button>
+  </div>
+
+  <!-- 단계 탭 (편집 프로그램의 아래쪽 페이지 개념) -->
+  <div id="wsSteps" class="subtabs" style="margin-top:10px">
+    <button class="subtab on" data-step="story" type="button">📜 스토리</button>
+    <button class="subtab" data-step="uses" type="button">🎭 쓰는 것</button>
+    <button class="subtab" data-step="music" type="button">🎵 음악</button>
+    <button class="subtab" data-step="join" type="button">🎞 이어붙이기</button>
+    <button class="subtab" data-step="bake" type="button">🔥 굽기</button>
+  </div>
+
+  <div id="wsStep_story" class="wsStep"></div>
+  <div id="wsStep_uses" class="wsStep" style="display:none"></div>
+  <div id="wsStep_music" class="wsStep" style="display:none"></div>
+  <div id="wsStep_join" class="wsStep" style="display:none"></div>
+  <div id="wsStep_bake" class="wsStep" style="display:none"></div>
+</div>
+
+<div id="wsStatus" class="hint" style="text-align:center; min-height:18px; margin-top:10px;
+     white-space:pre-wrap"></div>

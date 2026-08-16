@@ -1,0 +1,69 @@
+<div class="charRow">
+  <select id="fcChar" style="min-width:200px"><option value="">캐릭터 고르기…</option></select>
+  <select id="fcPose" style="width:auto"></select>
+  <button class="ghost small" id="fcAuto" type="button">🤖 자동으로 잡기</button>
+  <button class="ghost small" id="fcCopy" type="button" title="지금 방향의 부위를 나머지 두 방향에도 복사합니다 (뒤쪽은 좌우 반전)">📋 다른 방향에 복사</button>
+  <button class="ghost small" id="fcReset" type="button">처음으로</button>
+  <button id="fcSave">💾 저장</button>
+  <span class="hint" id="fcInfo" style="align-self:center"></span>
+</div>
+
+<div class="mkCols" style="margin-top:10px">
+  <div>
+    <div id="fcStage" style="position:relative; width:100%; aspect-ratio:3/4; border-radius:14px;
+         overflow:hidden; background:repeating-conic-gradient(#2a2730 0 25%, #201d26 0 50%) 0 0/18px 18px">
+      <canvas id="fcCanvas" style="position:absolute; inset:0; width:100%; height:100%"></canvas>
+    </div>
+    <div class="charRow">
+      <button class="ghost small" id="fcPlay" type="button">▶ 미리보기</button>
+      <button class="ghost small" id="fcStop" type="button">⏹ 정지</button>
+      <label style="display:flex; align-items:center; gap:6px; margin:0; width:auto; cursor:pointer">
+        <input type="checkbox" id="fcShowMarks" checked style="width:auto; margin:0"> 부위 표식 보기
+      </label>
+    </div>
+    <div id="fcPick" class="hint" style="min-height:18px; color:var(--color-saffron-spark);
+         font-weight:600"></div>
+    <div class="hint">
+      <b>정면 · 측면 · 후면은 따로 설정합니다.</b> 한 방향을 맞춘 뒤
+      <b>[📋 다른 방향에 복사]</b> 하면 나머지도 빠르게 잡을 수 있어요.<br>
+      부위를 맞추는 방법은 두 가지 — ① 오른쪽 목록에서 <b>[📍 위치 지정]</b>을 누르고 그림에서 그 지점을 클릭
+      ② 화면의 표식을 <b>직접 끌기</b>.<br>
+      눈·입은 <b>[원본 가림]</b>을 켜두면 표정을 넣을 때 원래 그려진 눈·입이 살색으로 덮이고
+      그 위에 새 표정이 그려집니다 (가릴 색은 그림에서 자동으로 찾고, 옆 색칸으로 바꿀 수 있어요).
+    </div>
+  </div>
+
+  <div>
+    <h3 class="mkHead">🎬 미리보기</h3>
+    <div class="grid">
+      <div><label>몸 전체 움직임</label><select id="fcMove"></select></div>
+      <div><label>움직임 크기 <span class="hint" id="fcAmpHint">100%</span></label>
+        <div class="numRow"><input type="range" id="fcAmpR" min="0" max="250" step="10" value="100">
+          <input type="number" id="fcAmp" min="0" max="250" step="10" value="100"><span class="unit">%</span></div></div>
+      <div><label>표정</label><select id="fcExpr"></select></div>
+      <div><label>💧 눈물 <span class="hint">(표정과 따로 켜집니다)</span></label>
+        <select id="fcTear"></select></div>
+      <div><label>눈물 세기 <span class="hint" id="fcTearAmpHint">100%</span></label>
+        <div class="numRow"><input type="range" id="fcTearAmpR" min="20" max="250" step="10" value="100">
+          <input type="number" id="fcTearAmp" min="20" max="250" step="10" value="100"><span class="unit">%</span></div></div>
+      <div><label>속도 <span class="hint" id="fcSpeedHint">1.0×</span></label>
+        <div class="numRow"><input type="range" id="fcSpeedR" min="10" max="300" step="5" value="100">
+          <input type="number" id="fcSpeed" min="10" max="300" step="5" value="100"><span class="unit">%</span></div></div>
+      <div><label>그물망 촘촘함 <span class="hint" id="fcCellsHint">20</span>
+          <span class="hint">— 부위를 움직일 때 매끄러운 정도</span></label>
+        <div class="numRow"><input type="range" id="fcCellsR" min="10" max="40" step="2" value="20">
+          <input type="number" id="fcCells" min="8" max="60" step="2" value="20"></div></div>
+    </div>
+
+    <h3 class="mkHead" style="margin-top:16px">🎯 부위 (머리 · 눈 · 입 · 귀 · 볼 · 몸통 · 엉덩이 · 꼬리)</h3>
+    <div class="hint" style="margin-bottom:6px">
+      <b>＋ / －</b> 는 그 부위의 <b>크기</b>, <b>움직임</b>은 그 부위만 커졌다 작아졌다 / 흔들리게 합니다.
+      점선 원이 실제로 영향을 받는 범위예요.<br>
+      꼬리·귀처럼 <b>흔드는 움직임</b>(살랑살랑·세게·펄럭·말았다 폈다·축 처지기·쫑긋)은
+      <b>뿌리(◇ 표시)를 축으로</b> 끝으로 갈수록 크게, 조금 늦게 휘어집니다 —
+      뿌리는 자동으로 찾고, <b>[⚓ 뿌리 지정]</b>으로 직접 찍을 수도 있어요.
+    </div>
+    <div id="fcList" class="vlist"></div>
+    <div id="fcStatus" class="hint" style="text-align:center; min-height:18px; margin-top:8px"></div>
+  </div>
+</div>

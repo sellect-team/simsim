@@ -1,0 +1,1889 @@
+<!doctype html><meta charset="utf-8"><title>스토리 기능 점검</title>
+<body style="background:#14131a;color:#e8e2d8;font-family:system-ui;padding:18px">
+<pre id="out" style="white-space:pre-wrap;line-height:1.6;font-size:13px"></pre>
+<script type="module">
+const out = document.getElementById("out");
+const lines = [];
+let pass = 0, fail = 0;
+const P = (name, ok, note = "") => {
+  ok ? pass++ : fail++;
+  lines.push(`${ok ? "✅" : "❌"} ${name}${note ? "  — " + note : ""}`);
+  out.textContent = lines.join("\n");
+  남기기();
+};
+/* 결과를 그때그때 남겨 둔다 — 맨 끝의 뒤로가기 검사가 이 페이지를 떠나 버려도
+   무엇이 통과했는지 읽을 수 있어야 한다. */
+function 남기기() {
+  try { sessionStorage.setItem("점검결과", JSON.stringify({ pass, fail, lines })); }
+  catch {}
+}
+const T = async (name, fn) => {
+  try { const n = await fn(); P(name, true, n || ""); }
+  catch (e) { P(name, false, String(e && e.message || e)); }
+};
+const eq = (a, b, what) => { if (a !== b) throw new Error(`${what}: ${a} ≠ ${b}`); };
+
+// 뒤로가기 길잡이는 한 번 깨워 둬야 popstate 를 듣는다 (본 화면에서는 index.html 이 한다)
+(await import("/p/js/ui/nav.js")).navInit();
+
+const { parseScript, writeScript, musicBrief, SPOTS } = await import("/p/js/story/script.js");
+const __stage = await import("/p/js/story/stage.js");
+window.__stage = __stage;
+const { Stage, TRANSITION_NAMES } = __stage;
+const { EFFECTS, drawEffect } = await import("/p/js/story/fx.js");
+const { StoryDoc } = await import("/p/js/story/doc.js");
+const { AssetLibrary, library } = await import("/p/js/story/assets.js");
+const { BakeQueue } = await import("/p/js/story/queue.js");
+const { FaceSprite, BODY_MOVES, EXPRESSIONS, TEARS } = await import("/p/js/char/face.js");
+
+lines.push("── 대본 문법 ──"); out.textContent = lines.join("\n");
+
+await T("빈 대본도 안 죽는다", () => {
+  const d = parseScript("");
+  eq(d.scenes.length, 0, "장면 수"); eq(d.errors.length, 0, "오류 수");
+});
+await T("모르는 말은 오류로 알려 준다", () => {
+  const d = parseScript("장면 배경\n  이건뭐지 이상한말");
+  if (!d.errors.length) throw new Error("오류를 못 잡음");
+  return `${d.errors[0].line}줄에서 잡음`;
+});
+await T("장면 없이 지시하면 알려 준다", () => {
+  const d = parseScript('자막 "안녕"');
+  if (!d.errors.length) throw new Error("오류를 못 잡음");
+});
+await T("시간은 자막·대기만 민다", () => {
+  const d = parseScript(`장면 A\n  개 등장 왼쪽\n  개 이동 오른쪽 3초\n  자막 "가"\n  대기 2초\n  자막 "나"`);
+  const s = d.scenes[0];
+  const 자막 = s.steps.filter(x => x.kind === "자막");
+  eq(자막[0].t, 0, "첫 자막 시각");
+  const 이동 = s.steps.find(x => x.kind === "이동");
+  eq(이동.t, 0, "이동 시각");             // 이동은 시간을 밀지 않는다
+  if (자막[1].t <= 자막[0].t + 2) throw new Error("대기 2초가 반영 안 됨");
+  return `둘째 자막 ${자막[1].t.toFixed(1)}초`;
+});
+await T("대본 → 구조 → 대본 왕복", () => {
+  const src = `제목: 시험\n\n장면 배경 전환:페이드\n  개 등장 왼쪽 크기:0.5\n  자막 "가나다"\n`;
+  const a = parseScript(src), b = parseScript(writeScript(a));
+  eq(b.scenes.length, a.scenes.length, "장면 수");
+  eq(b.scenes[0].steps.length, a.scenes[0].steps.length, "지시 수");
+  eq(b.seconds.toFixed(2), a.seconds.toFixed(2), "길이");
+});
+await T("카메라 지시를 읽는다", () => {
+  const d = parseScript(`장면 A\n  카메라 줌인 2초 세기:1.4\n  카메라 흔들기 0.4초\n  자막 "가"`);
+  const cam = d.scenes[0].steps.filter(x => x.kind === "카메라");
+  eq(cam.length, 2, "카메라 지시 수");
+  eq(cam[0].move, "줌인", "첫 지시");
+});
+await T("음악 프롬프트를 만든다", () => {
+  const d = parseScript(`제목: ㄱ\n음악프롬프트: warm ukulele\n음악분위기: 포근한\n\n장면 A\n  자막 "가"`);
+  const m = musicBrief(d);
+  if (!m.suno.includes("warm ukulele") || !m.suno.includes("instrumental"))
+    throw new Error("프롬프트 내용 빠짐: " + m.suno);
+  return m.suno;
+});
+
+lines.push("\n── 무대 ──"); out.textContent = lines.join("\n");
+
+const cv = document.createElement("canvas");
+cv.width = 180; cv.height = 320;
+const cx = cv.getContext("2d");
+const BOX = { x: 0, y: 0, w: 180, h: 320 };
+
+await T("자산이 하나도 없어도 그려진다 (자리표시)", () => {
+  const s = Stage.fromText(`장면 없는배경\n  없는애 등장 왼쪽\n  자막 "가"`, {});
+  s.drawAt(cx, BOX, 0.5);
+  eq(s.needs().missing.length, 2, "없는 자산 수");
+});
+await T("모든 효과가 오류 없이 그려진다", () => {
+  Object.keys(EFFECTS).forEach(n => { for (const t of [0, 0.7, 1.9]) drawEffect(cx, BOX, n, t, {}); });
+  return `${Object.keys(EFFECTS).length}종`;
+});
+await T("모든 전환이 오류 없이 그려진다", () => {
+  for (const tr of TRANSITION_NAMES) {
+    const s = Stage.fromText(`장면 A\n  자막 "가"\n\n장면 B 전환:${tr}\n  자막 "나"`, {});
+    for (let t = 0; t < s.seconds; t += 0.25) s.drawAt(cx, BOX, t);
+  }
+  return `${TRANSITION_NAMES.length}종`;
+});
+/* 장면이 바뀔 때 어떤 장면을 몇 초 시점으로 그렸는지 엿본다 */
+function 전환엿보기(s, t) {
+  const calls = [];
+  const real = s.drawScene.bind(s);
+  s.drawScene = (c, b, sc, tt) => {
+    if (s.scenes.includes(sc)) calls.push({ i: s.scenes.indexOf(sc), t: +tt.toFixed(3) });
+    return real(c, b, sc, tt);
+  };
+  s.drawAt(cx, BOX, t);
+  s.drawScene = real;
+  return calls;
+}
+
+await T("전환을 안 적어도 부드럽게 넘어간다 (기본 페이드)", () => {
+  const s = Stage.fromText(`장면 A\n  자막 "가"\n\n장면 B\n  자막 "나"`, {});
+  const 겹침 = 전환엿보기(s, s.scenes[1].start + 0.15);
+  if (!겹침.some(c => c.i === 0)) throw new Error("앞 장면을 안 겹쳐 그림 — 딱 잘려 끊긴다");
+  if (!겹침.some(c => c.i === 1)) throw new Error("새 장면을 안 그림");
+  const 첫장면 = 전환엿보기(s, 0.1);
+  if (첫장면.length !== 1) throw new Error("첫 장면인데 전환을 함");
+  return `겹쳐 그림 ${겹침.length}장 · 첫 장면은 1장`;
+});
+
+await T("전환 중에도 앞 장면이 얼어붙지 않는다", () => {
+  const s = Stage.fromText(`장면 A\n  개 등장 가운데 동작:breathe\n  자막 "가"\n\n장면 B 전환:밀기\n  자막 "나"`, {});
+  const c = 전환엿보기(s, s.scenes[1].start + 0.2);
+  const 앞 = c.find(x => x.i === 0);
+  if (!앞) throw new Error("앞 장면을 안 그림");
+  if (앞.t <= s.scenes[0].seconds)
+    throw new Error(`앞 장면이 ${앞.t}초에 멈춰 있음 (정지 사진)`);
+  return `앞 장면 ${앞.t}초 (끝난 뒤에도 계속 움직임)`;
+});
+
+await T("전환길이를 대본에서 바꿀 수 있다", () => {
+  const 짧 = Stage.fromText(`장면 A\n  자막 "가"\n\n장면 B 전환:페이드 전환길이:0.2초\n  자막 "나"`, {});
+  const 김 = Stage.fromText(`장면 A\n  자막 "가"\n\n장면 B 전환:페이드 전환길이:1.2초\n  자막 "나"`, {});
+  const t = 짧.scenes[1].start + 0.5;
+  if (전환엿보기(짧, t).some(x => x.i === 0)) throw new Error("0.2초로 줄였는데 0.5초에도 겹침");
+  if (!전환엿보기(김, t).some(x => x.i === 0)) throw new Error("1.2초로 늘렸는데 0.5초에 안 겹침");
+  return "0.2초 · 1.2초 둘 다 맞음";
+});
+
+await T("영상 크기가 비율대로 나온다 (미리보기도 같은 값을 쓴다)", async () => {
+  const { videoSize } = await import("/p/js/story/render.js");
+  const 보기 = r => { const v = videoSize({ doc: { meta: { 비율: r } } }, { 세로: 1280 });
+                      return `${v.가로}×${v.세로}`; };
+  eq(보기("9:16"), "720×1280", "세로 영상");
+  eq(보기("16:9"), "1280×720", "가로 영상");
+  eq(보기("1:1"), "1280×1280", "정사각");
+  const v = videoSize(null, { 비율: "9:16", 세로: 1281 });
+  if (v.세로 % 2 || v.가로 % 2) throw new Error("h264 는 짝수여야 하는데 " + v.가로 + "×" + v.세로);
+  return "9:16 · 16:9 · 1:1 · 홀수 보정";
+});
+
+await T("그림이 한 장도 없어도 배경·배우가 그려진다", async () => {
+  const { readScenery } = await import("/p/js/story/scenery.js");
+  const { readCharacter } = await import("/p/js/char/autochar.js");
+  eq(readScenery("밤바다").시간.이름, "밤", "밤 알아봄");
+  eq(readScenery("밤바다").장소.이름, "바다", "바다 알아봄");
+  eq(readScenery("노을 지는 들판").시간.이름, "노을", "노을");
+  eq(readScenery("듣도보도못한곳").알아봄, false, "모르는 이름은 알려 준다");
+  eq(readCharacter("누렁이 강아지").종류, "개", "강아지");
+  eq(readCharacter("냥이").종류, "고양이", "고양이");
+  // 같은 이름이면 언제나 같은 모습이어야 한다 (미리보기와 구운 것이 같도록)
+  const a = readCharacter("이름만있는애"), b = readCharacter("이름만있는애");
+  eq(a.종류 + a.몸.join(), b.종류 + b.몸.join(), "같은 이름 = 같은 모습");
+  return `${readScenery("밤바다").시간.이름} ${readScenery("밤바다").장소.이름} · ${a.종류}`;
+});
+
+await T("단색 배경 — 흰색·검정·#색깔", async () => {
+  const { readColor, readScenery } = await import("/p/js/story/scenery.js");
+  eq(readColor("흰색").join(), "255,255,255", "흰색");
+  eq(readColor("검정").join(), "17,17,20", "검정");
+  eq(readColor("#204080").join(), "32,64,128", "#rrggbb");
+  eq(readColor("검정배경").join(), "17,17,20", "붙여 쓴 말");
+  if (readColor("밤바다")) throw new Error("색이 아닌데 색으로 읽음");
+  if (!readScenery("흰색").단색) throw new Error("장면 흰색이 단색이 아님");
+  if (!readScenery("").단색) throw new Error("배경을 안 적으면 빈 화면이어야 함");
+  // 대본에서 배경색을 지정하면 그 색으로 칠해지는가
+  const s = Stage.fromText(`배경색: 검정\n장면 들판\n  자막 "가"`, {});
+  s.drawAt(cx, BOX, 0.2);
+  const px = cx.getImageData(BOX.x + 4, BOX.y + 4, 1, 1).data;
+  if (px[0] > 40 || px[1] > 40) throw new Error(`검정이어야 하는데 rgb(${px[0]},${px[1]},${px[2]})`);
+  return `배경색: 검정 → rgb(${px[0]},${px[1]},${px[2]})`;
+});
+
+await T("배경 그림이 생기면 코드 배경을 대신한다", () => {
+  const 그림 = document.createElement("canvas");
+  그림.width = 그림.height = 8;
+  const g2 = 그림.getContext("2d");
+  g2.fillStyle = "#ff00cc"; g2.fillRect(0, 0, 8, 8);
+  const s = Stage.fromText(`장면 밤바다\n  자막 "가"`, { 배경: { 밤바다: 그림 } });
+  s.drawAt(cx, BOX, 0.2);
+  const px = cx.getImageData(BOX.x + 4, BOX.y + 4, 1, 1).data;
+  if (px[0] < 200 || px[2] < 150) throw new Error(`올린 그림이 안 쓰임 rgb(${px[0]},${px[1]},${px[2]})`);
+  if (s.needs().missing.some(m => m.종류 === "배경")) throw new Error("그림이 있는데 부족하다고 함");
+  return "올린 그림이 이긴다";
+});
+
+await T("코드로 그리는 것은 '막는 부족'이 아니다", () => {
+  const s = Stage.fromText(`장면 밤바다\n  댕댕이 등장 가운데\n  자막 "가"`, {});
+  const miss = s.needs().missing;
+  if (!miss.length) throw new Error("바꿀 수 있다는 것은 알려 줘야 한다");
+  const 막힘 = miss.filter(m => !m.자동);
+  if (막힘.length) throw new Error("코드로 그릴 수 있는데 막는다고 함: " + JSON.stringify(막힘));
+  return `${miss.length}개 모두 자동 (${miss.map(m => m.자동설명).join(", ")})`;
+});
+
+/* ── 게임에서 빌려 온 연출 ── */
+await T("흔들기가 트라우마 제곱으로 줄어든다 (세게 시작해 스르르 잦아듦)", () => {
+  const s = Stage.fromText(`장면 A\n  카메라 흔들기 1초 세기:1\n  자막 "가"`, {});
+  const cam = t => { let v = 0; s.drawScene(cx, BOX, s.scenes[0], t); return v; };
+  // 값을 직접 확인하려고 무대 안 함수를 쓴다
+  const 세기 = t => {
+    let 트 = 0;
+    for (const q of s.scenes[0].cam.shakes)
+      if (t >= q.t0 && t <= q.t1) 트 = Math.max(트, q.amp * (1 - (t - q.t0) / (q.t1 - q.t0)));
+    return 트 * 트;
+  };
+  const a = 세기(0.05), b = 세기(0.5), c = 세기(0.95);
+  if (!(a > b && b > c)) throw new Error(`잦아들지 않음 ${a}>${b}>${c}`);
+  // 제곱이므로 절반 시점에는 1/4 근처여야 한다 (선형이면 1/2)
+  if (b > 0.35) throw new Error(`절반 시점이 ${b.toFixed(2)} — 제곱이 아님(선형이면 0.5)`);
+  for (let t = 0; t < 1.2; t += 0.05) s.drawAt(cx, BOX, t);   // 그리다 죽지 않는가
+  return `0.05초 ${a.toFixed(2)} → 0.5초 ${b.toFixed(2)} → 0.95초 ${c.toFixed(2)}`;
+});
+
+await T("눌리기·늘어나기가 부피를 지킨다 (가로↔세로가 반대로)", () => {
+  const s = Stage.fromText(`장면 A\n  개 등장 가운데\n  개 눌리기 0.4초 세기:1\n  자막 "가"`, {});
+  const a = s.scenes[0].actors[0];
+  if (!a.squash?.length) throw new Error("눌림 트랙이 없음");
+  // 한가운데가 가장 납작해야 한다
+  const 값 = t => { let v = 0;
+    for (const q of a.squash) if (t >= q.t0 && t <= q.t1)
+      v += q.amt * Math.sin((t - q.t0) / (q.t1 - q.t0) * Math.PI);
+    return v; };
+  const 가운데 = 값(0.2);
+  if (!(가운데 < -0.1)) throw new Error(`납작해지지 않음 (${가운데.toFixed(2)})`);
+  const sy = 1 + 가운데, sx = 1 / Math.max(0.4, sy);
+  if (!(sx > 1 && sy < 1)) throw new Error(`부피가 안 지켜짐 가로${sx.toFixed(2)} 세로${sy.toFixed(2)}`);
+  if (Math.abs(sx * sy - 1) > 0.01) throw new Error("가로×세로가 1이 아님");
+  return `세로 ${sy.toFixed(2)} × 가로 ${sx.toFixed(2)} = ${(sx * sy).toFixed(3)}`;
+});
+
+await T("점프에 눌림·늘림이 저절로 붙는다", () => {
+  const s = Stage.fromText(`장면 A\n  개 등장 가운데\n  개 점프 오른쪽 0.8초\n  자막 "가"`, {});
+  const q = s.scenes[0].actors[0].squash || [];
+  if (q.length < 3) throw new Error(`${q.length}개뿐 (웅크림·늘어남·착지 3개여야 함)`);
+  if (!(q[0].amt < 0 && q[1].amt > 0 && q[2].amt < 0))
+    throw new Error("웅크림(−) → 늘어남(+) → 착지(−) 차례가 아님");
+  return `웅크림 ${q[0].amt} → 늘어남 ${q[1].amt} → 착지 ${q[2].amt}`;
+});
+
+await T("상태 한 낱말이 표정·동작·효과를 한꺼번에 건다", async () => {
+  const { STATES } = await import("/p/js/char/moods.js");
+  const s = Stage.fromText(`장면 A\n  개 등장 가운데\n  개 상태 놀람\n  자막 "가"`, {});
+  const sc = s.scenes[0], a = sc.actors[0];
+  const 표정 = a.events.find(e => e.kind === "표정");
+  eq(표정?.value, STATES.놀람.표정, "표정");
+  if (!a.events.some(e => e.kind === "동작")) throw new Error("동작이 안 걸림");
+  if (!sc.effects.some(e => e.name === STATES.놀람.효과)) throw new Error("효과가 안 걸림");
+  if (!sc.sounds.some(e => e.name === STATES.놀람.소리)) throw new Error("소리가 안 걸림");
+  if (!a.squash.length) throw new Error("눌림이 안 걸림");
+  if (!a.shakes.length) throw new Error("떨기가 안 걸림");
+  if (!sc.cam.punches.length) throw new Error("카메라 펀치가 안 걸림");
+  for (let t = 0; t < s.seconds; t += 0.1) s.drawAt(cx, BOX, t);
+  return `한 줄이 ${["표정", "동작", "효과", "소리", "눌림", "떨기", "카메라"].length}가지를 검`;
+});
+
+await T("모든 상태가 오류 없이 그려진다", async () => {
+  const { STATES } = await import("/p/js/char/moods.js");
+  for (const n of Object.keys(STATES)) {
+    const s = Stage.fromText(`장면 A\n  개 등장 가운데\n  개 상태 ${n}\n  자막 "가"`, {});
+    for (let t = 0; t < s.seconds; t += 0.2) s.drawAt(cx, BOX, t);
+  }
+  return `${Object.keys(STATES).length}가지`;
+});
+
+await T("카메라 기울이기·펀치·레터박스", () => {
+  const s = Stage.fromText(`장면 A
+  카메라 기울이기 8 0.4초
+  카메라 펀치 0.3초
+  카메라 레터박스 0.4초
+  자막 "가"
+  카메라 레터박스 끄기 0.3초
+  자막 "나"`, {});
+  const c = s.scenes[0].cam;
+  if (!c.tilt.length) throw new Error("기울이기가 안 들어감");
+  eq(c.tilt[0].to, 8, "기울인 각도");
+  if (!c.punches.length) throw new Error("펀치가 안 들어감");
+  if (c.bars.length < 2) throw new Error("레터박스 켜기·끄기가 둘 다 있어야 함");
+  eq(c.bars[c.bars.length - 1].to, 0, "마지막은 꺼짐");
+  for (let t = 0; t < s.seconds; t += 0.1) s.drawAt(cx, BOX, t);
+  return `기울이기 ${c.tilt[0].to}° · 펀치 1 · 띠 ${c.bars.length}`;
+});
+
+await T("모든 분위기가 오류 없이 입혀진다 (후처리)", async () => {
+  const { MOODS } = await import("/p/js/story/post.js");
+  for (const n of Object.keys(MOODS)) {
+    const s = Stage.fromText(`장면 A 분위기:${n}\n  개 등장 가운데\n  자막 "가"`, {});
+    for (let t = 0; t < s.seconds; t += 0.3) s.drawAt(cx, BOX, t);
+  }
+  return `${Object.keys(MOODS).length}가지`;
+});
+
+await T("분위기가 화면을 실제로 바꾼다 (밤은 어두워진다)", () => {
+  const 밝기 = 분위기 => {
+    const s = Stage.fromText(`장면 흰색${분위기 ? " 분위기:" + 분위기 : ""}\n  자막 "가"`, {});
+    s.drawAt(cx, BOX, 0.5);
+    const d = cx.getImageData(BOX.x + 6, BOX.y + 6, 1, 1).data;
+    return (d[0] + d[1] + d[2]) / 3;
+  };
+  const 없음 = 밝기(""), 밤 = 밝기("밤"), 무서움 = 밝기("무서움");
+  if (!(밤 < 없음 - 20)) throw new Error(`밤인데 안 어두워짐 (${없음.toFixed(0)} → ${밤.toFixed(0)})`);
+  if (!(무서움 < 없음 - 20)) throw new Error("무서움이 안 어두워짐");
+  return `없음 ${없음.toFixed(0)} → 밤 ${밤.toFixed(0)} → 무서움 ${무서움.toFixed(0)}`;
+});
+
+await T("화면 번쩍·비네트·블룸 지시가 읽힌다", () => {
+  const s = Stage.fromText(`장면 A
+  화면 비네트 0.5 0.6초
+  화면 블룸 0.4 0.6초
+  화면 결 0.2
+  화면 번쩍 0.3초
+  자막 "가"
+  화면 분위기 회상
+  자막 "나"`, {});
+  const p = s.scenes[0].post;
+  if (!p.비네트.length || !p.블룸.length || !p.결.length) throw new Error("트랙이 안 만들어짐");
+  if (!p.번쩍.length) throw new Error("번쩍이 없음");
+  if (!p.분위기.length) throw new Error("도중 분위기 바꾸기가 없음");
+  const 첫 = s.postAt(s.scenes[0], 0.1), 끝 = s.postAt(s.scenes[0], s.scenes[0].seconds - 0.1);
+  if (!(첫.번쩍 > 0.2)) throw new Error("번쩍이 안 밝음");
+  eq(끝.분위기, "회상", "도중에 바뀐 분위기");
+  for (let t = 0; t < s.seconds; t += 0.1) s.drawAt(cx, BOX, t);
+  return `번쩍 ${첫.번쩍.toFixed(2)} → 분위기 ${끝.분위기}`;
+});
+
+await T("느리게·빠르게가 화면 속 시간을 바꾼다 (슬로모션)", () => {
+  const s = Stage.fromText(`장면 A\n  개 등장 가운데\n  느리게 0.5 2초\n  자막 "가"`, {});
+  const sc = s.scenes[0];
+  // 실제 2초가 흘렀지만 화면 속은 1초만 흘러야 한다 (0.5배)
+  const 흐른것 = s.sceneTime(sc, 2.0);
+  if (Math.abs(흐른것 - 1.0) > 0.05) throw new Error(`2초 뒤 화면 속이 ${흐른것.toFixed(2)}초 (1초여야)`);
+  // 구간이 끝난 뒤에는 다시 1배로 흘러야 한다 (뒤로 갈수록 어긋나면 안 된다)
+  const 뒤 = s.sceneTime(sc, 3.0);
+  if (Math.abs(뒤 - 2.0) > 0.05) throw new Error(`구간 뒤가 어긋남 (${뒤.toFixed(2)}, 2초여야)`);
+  const 빠름 = Stage.fromText(`장면 A\n  개 등장 가운데\n  빠르게 2 1초\n  자막 "가"`, {});
+  const 빠른것 = 빠름.sceneTime(빠름.scenes[0], 1.0);
+  if (Math.abs(빠른것 - 2.0) > 0.05) throw new Error(`빠르게 1초 뒤가 ${빠른것.toFixed(2)}초 (2초여야)`);
+  for (let t = 0; t < s.seconds; t += 0.1) s.drawAt(cx, BOX, t);
+  return `느리게 2초→${흐른것.toFixed(1)}초 · 그 뒤 3초→${뒤.toFixed(1)}초 · 빠르게 1초→${빠른것.toFixed(1)}초`;
+});
+
+await T("따라가는 카메라 — 무시 구역 밖에서만 쫓아간다", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 가운데
+  카메라 따라가기 개
+  개 이동 오른쪽끝 2초
+  자막 "가"`, {});
+  const f = s.scenes[0].cam.follow;
+  if (!f) throw new Error("따라가기가 안 들어감");
+  const 카메라x = t => {
+    const 자리 = [];
+    const real = s.drawScene.bind(s);
+    s.drawAt(cx, BOX, t);
+    return null;
+  };
+  // 가운데에 있을 때는 카메라가 안 움직여야 한다
+  for (let t = 0; t < s.seconds; t += 0.15) s.drawAt(cx, BOX, t);
+  eq(f.무시 > 0, true, "무시 구역이 있음");
+  return `무시 구역 ${f.무시} · 느슨 ${f.느슨}`;
+});
+
+/* ── 개체를 꺾쇠로 감싸기 ── */
+await T("<이름>으로 감싼 개체를 알아본다 (추측이 필요 없다)", () => {
+  const { scenes, errors } = parseScript(`장면 <노을 지는 들판>   전환:페이드
+  <우리집 강아지> 등장 왼쪽 크기:0.6
+  <우리집 강아지> 대사 "안녕!"   소리:딩
+  <우리집 강아지> 상태 기쁨`);
+  if (errors.length) throw new Error(errors.map(e => e.msg).join(" / "));
+  eq(scenes[0].bg, "노을 지는 들판", "배경 이름");
+  const who = new Set(scenes[0].steps.filter(s => s.who).map(s => s.who));
+  eq([...who].join(","), "우리집 강아지", "배우 이름");
+  const 대사 = scenes[0].steps.find(s => s.kind === "대사");
+  eq(대사.text, "안녕!", "말풍선 글 (개체 토큰에 안 먹혀야 함)");
+  eq(대사.opt.소리, "딩", "꼬리표");
+  return "배경·배우·대사·꼬리표 모두 통과";
+});
+
+await T("동사와 같은 이름도 감싸면 안전하다", () => {
+  // 이름이 '이동' 인 캐릭터 — 감싸지 않으면 동사로 잘못 읽힌다
+  const { scenes, errors } = parseScript(`장면 <A>\n  <이동> 등장 가운데\n  <이동> 이동 오른쪽 2초`);
+  if (errors.length) throw new Error(errors.map(e => e.msg).join(" / "));
+  const 등장 = scenes[0].steps.find(s => s.kind === "등장");
+  eq(등장.who, "이동", "이름이 '이동' 인 배우");
+  const 움직 = scenes[0].steps.find(s => s.kind === "이동");
+  eq(움직.who, "이동", "같은 배우가 이동");
+  eq(움직.spot, "오른쪽", "가는 곳");
+  return "이름 '이동' 도 안전";
+});
+
+await T("감싸지 않은 예전 대본도 그대로 읽힌다", () => {
+  const { scenes, errors } = parseScript(`장면 공원 잔디밭
+  우리집 강아지 등장 왼쪽
+  우리집 강아지 대사 "예전 방식"`);
+  if (errors.length) throw new Error(errors.map(e => e.msg).join(" / "));
+  eq(scenes[0].bg, "공원 잔디밭", "배경");
+  eq(scenes[0].steps[0].who, "우리집 강아지", "배우");
+  eq(scenes[0].steps[1].text, "예전 방식", "대사");
+  return "예전 대본 그대로 동작";
+});
+
+await T("대본 → 구조 → 대본 왕복에서 꺾쇠가 유지된다", () => {
+  const 글 = `장면 <밤바다>
+  <누렁 이> 등장 왼쪽
+  <누렁 이> 대사 "다시 써도 같아야 한다"`;
+  const 다시 = writeScript(parseScript(글));
+  if (!다시.includes("<밤바다>")) throw new Error("배경이 안 감싸짐: " + 다시);
+  if (!다시.includes("<누렁 이>")) throw new Error("배우가 안 감싸짐: " + 다시);
+  const 두번째 = parseScript(다시);
+  eq(두번째.scenes[0].bg, "밤바다", "왕복 후 배경");
+  eq(두번째.scenes[0].steps[0].who, "누렁 이", "왕복 후 배우");
+  return "감싼 채로 왕복";
+});
+
+/* ── 소품 · 붙이기 ── */
+await T("소품이 개체로 만들어진다 (배우와 같은 트랙을 쓴다)", () => {
+  const s = Stage.fromText(`장면 <A>
+  소품 <공>
+  <공> 등장 오른쪽 크기:0.2
+  <공> 점프 왼쪽 0.8초
+  <공> 돌리기 2 1초
+  자막 "가"`, {});
+  const a = s.scenes[0].actors.find(x => x.name === "공");
+  if (!a) throw new Error("소품 개체가 없음");
+  eq(a.소품, "공", "소품 표시");
+  if (!a.pos.length) throw new Error("자리 트랙이 없음");
+  if (!a.hop.length) throw new Error("점프가 안 걸림");
+  if (!a.회전.length) throw new Error("돌리기가 안 걸림");
+  for (let t = 0; t < s.seconds; t += 0.1) s.drawAt(cx, BOX, t);
+  return `자리 ${a.pos.length} · 점프 ${a.hop.length} · 회전 ${a.회전.length}`;
+});
+
+await T("소품은 캐릭터 그림을 요구하지 않는다", () => {
+  const s = Stage.fromText(`장면 <A>\n  소품 <공>\n  <공> 등장 가운데\n  자막 "가"`, {});
+  const miss = s.needs().missing.filter(m => m.종류 === "캐릭터");
+  if (miss.length) throw new Error("소품인데 캐릭터 그림을 달라고 함: " + JSON.stringify(miss));
+  if (s.needs().배우.includes("공")) throw new Error("소품이 배우 목록에 들어감");
+  return "그림 요구 없음";
+});
+
+await T("붙이면 부모를 따라간다 · 떼면 그 자리에 남는다", () => {
+  const s = Stage.fromText(`장면 <A>
+  <누렁이> 등장 왼쪽
+  소품 <공>
+  <공> 등장 오른쪽끝
+  <공> 붙이기 <누렁이> 손
+  <누렁이> 이동 오른쪽끝 2초
+  자막 "가"
+  <공> 떼기
+  <누렁이> 이동 왼쪽 2초
+  자막 "나"`, {});
+  const sc = s.scenes[0];
+  const 공 = sc.actors.find(x => x.name === "공");
+  const 개 = sc.actors.find(x => x.name === "누렁이");
+  if (!공.붙음.length) throw new Error("붙이기가 안 들어감");
+  const 뗀때 = 공.붙음[0].t1;
+  if (!Number.isFinite(뗀때)) throw new Error("떼기가 안 먹음");
+
+  // 붙어 있는 동안: 공이 개를 따라 오른쪽으로 가야 한다
+  const 개시작 = s.자리보기(sc, 개, 0.1)[0], 공시작 = s.자리보기(sc, 공, 0.1)[0];
+  const 개끝 = s.자리보기(sc, 개, 뗀때 - 0.05)[0], 공끝 = s.자리보기(sc, 공, 뗀때 - 0.05)[0];
+  if (Math.abs((공시작 - 개시작) - (공끝 - 개끝)) > 0.02)
+    throw new Error("붙어 있는데 사이가 벌어짐");
+  if (!(공끝 > 공시작 + 0.2)) throw new Error("공이 안 따라감");
+
+  // 뗀 뒤: 개는 왼쪽으로 가지만 공은 그 자리에 남아야 한다
+  const 뗀직후 = s.자리보기(sc, 공, 뗀때 + 0.05)[0];
+  const 한참뒤 = s.자리보기(sc, 공, 뗀때 + 1.8)[0];
+  if (Math.abs(한참뒤 - 뗀직후) > 0.06) throw new Error("뗐는데 아직 따라감");
+  for (let t = 0; t < s.seconds; t += 0.1) s.drawAt(cx, BOX, t);
+  return `붙은 채 ${공시작.toFixed(2)}→${공끝.toFixed(2)} · 뗀 뒤 그대로 ${한참뒤.toFixed(2)}`;
+});
+
+await T("모든 소품이 오류 없이 그려진다", async () => {
+  const { PROPS } = await import("/p/js/story/props.js");
+  for (const n of Object.keys(PROPS)) {
+    const s = Stage.fromText(`장면 <A>\n  소품 <${n}>\n  <${n}> 등장 가운데\n  자막 "가"`, {});
+    for (let t = 0; t < s.seconds; t += 0.3) s.drawAt(cx, BOX, t);
+  }
+  return `${Object.keys(PROPS).length}가지`;
+});
+
+await T("자리를 숫자 좌표로도 쓸 수 있다 (0.5,0.7)", () => {
+  const { scenes, errors } = parseScript(`장면 <A>
+  <개> 등장 0.12,0.4
+  <개> 이동 0.9,0.6 1초
+  소품 <공>
+  <공> 등장 0.3,0.25
+  카메라 이동 0.8,0.5 1초
+  자막 "가"`);
+  if (errors.length) throw new Error(errors.map(e => e.msg).join(" / "));
+  eq(scenes[0].steps[0].spot, "0.12,0.4", "등장 좌표");
+  eq(scenes[0].steps[1].spot, "0.9,0.6", "이동 좌표");
+  eq(scenes[0].steps.find(s => s.kind === "카메라").spot, "0.8,0.5", "카메라 좌표");
+  // 실제로 그 자리에 놓이는가
+  const s = Stage.fromText(`장면 <A>\n  <개> 등장 0.12,0.4\n  자막 "가"`, {});
+  const a = s.scenes[0].actors[0];
+  const 자리 = s.자리보기(s.scenes[0], a, 1.0);
+  if (Math.abs(자리[0] - 0.12) > 0.02 || Math.abs(자리[1] - 0.4) > 0.02)
+    throw new Error(`좌표가 안 먹음: ${자리.map(v => v.toFixed(2))}`);
+  // 여러 자리를 거쳐 가는 것과 헷갈리면 안 된다
+  const 길 = parseScript(`장면 <A>\n  <개> 이동 왼쪽,가운데,오른쪽 3초`);
+  eq(길.scenes[0].steps[0].kind, "경로", "이름 여러 개는 경로");
+  return `등장 0.12,0.4 → 실제 ${자리.map(v => v.toFixed(2)).join(",")}`;
+});
+
+await T("시간 밖(음수·끝 이후)에도 안 죽는다", () => {
+  const s = Stage.fromText(`장면 A\n  자막 "가"`, {});
+  s.drawAt(cx, BOX, -5); s.drawAt(cx, BOX, 9999);
+});
+await T("장면·컷 시각 계산이 맞는다", () => {
+  const s = Stage.fromText(`장면 A\n  자막 "가" 2초\n\n장면 B\n  자막 "나" 3초`, {});
+  eq(s.scenes[0].seconds.toFixed(1), "2.0", "1장면 길이");
+  eq(s.scenes[1].start.toFixed(1), "2.0", "2장면 시작");
+  eq(s.seconds.toFixed(1), "5.0", "전체");
+  eq(s.sceneAt(2.5), s.scenes[1], "2.5초의 장면");
+});
+await T("소리 시각을 뽑아 준다", () => {
+  const s = Stage.fromText(`장면 A\n  소리 톡\n  자막 "가" 2초\n  소리 딩`, {});
+  eq(s.soundsBetween(0, 99).length, 2, "소리 수");
+});
+
+lines.push("\n── 대본 객체 · 자산 창고 ──"); out.textContent = lines.join("\n");
+
+await T("StoryDoc 이 필요한 그림과 프롬프트를 알려 준다", async () => {
+  const d = new StoryDoc(`장면 밤바다\n  누구 등장 왼쪽\n  자막 "가"`);
+  await d.build(library);
+  const miss = d.missingWithPrompts();
+  if (!miss.length || !miss[0].프롬프트) throw new Error("프롬프트가 없음");
+  return miss.map(m => m.종류).join(",");
+});
+await T("자산 창고가 같은 것을 두 번 만들지 않는다", async () => {
+  await library.refresh(true);
+  if (!library.characters.length) return "캐릭터가 없어 건너뜀";
+  const n = library.characters[0].name;
+  const t0 = performance.now();
+  const a = await library.character(n);
+  const t1 = performance.now();
+  const b = await library.character(n);
+  const t2 = performance.now();
+  if (a !== b) throw new Error("다른 것이 만들어짐");
+  return `처음 ${(t1 - t0).toFixed(0)}ms → 두 번째 ${(t2 - t1).toFixed(1)}ms`;
+});
+await T("이름이 조금 달라도 찾아 준다", async () => {
+  if (!library.characters.length) return "건너뜀";
+  const full = library.characters[0].name;
+  const part = full.slice(0, Math.max(2, full.length - 1));
+  if (!AssetLibrary.match(library.characters, part)) throw new Error(`'${part}' 를 못 찾음`);
+  return `'${part}' → '${full}'`;
+});
+await T("굽기 줄이 상태를 센다", () => {
+  const q = new BakeQueue();
+  q.add(new StoryDoc(`장면 A\n  자막 "가"`, "하나"));
+  q.add(new StoryDoc(`장면 B\n  자막 "나"`, "둘"));
+  eq(q.summary.전체, 2, "전체");
+  eq(q.summary.대기, 2, "대기");
+  q.remove(0);
+  eq(q.summary.전체, 1, "삭제 후");
+});
+
+lines.push("\n── 캐릭터 그리기 ──"); out.textContent = lines.join("\n");
+
+await T("표정·눈물·몸움직임 전부 오류 없이 그려진다", async () => {
+  if (!library.characters.length) return "캐릭터가 없어 건너뜀";
+  const sp = await library.character(library.characters[0].name);
+  if (!sp) return "캐릭터를 못 불러와 건너뜀";
+  let n = 0;
+  for (const m of Object.keys(BODY_MOVES)) { sp.move = m; sp.draw(cx, BOX, 0.6); n++; }
+  for (const e of Object.keys(EXPRESSIONS)) { sp.expr = e; sp.draw(cx, BOX, 0.6); n++; }
+  for (const t of Object.keys(TEARS)) { sp.tear = t; sp.draw(cx, BOX, 0.6); n++; }
+  sp.move = "breathe"; sp.expr = "blink"; sp.tear = "none";
+  return `${n}가지`;
+});
+await T("한 프레임 그리는 시간", async () => {
+  const d = new StoryDoc(`장면 ${library.backgrounds[0]?.name || "없음"}
+  ${library.characters[0]?.name || "없음"} 등장 왼쪽 크기:0.7
+  효과 불꽃
+  카메라 줌인 2초
+  자막 "속도 시험"`);
+  await d.build(library);
+  const t0 = performance.now();
+  const N = 40;
+  for (let i = 0; i < N; i++) d.stage.drawAt(cx, BOX, i * 0.05);
+  const ms = (performance.now() - t0) / N;
+  if (ms > 60) throw new Error(`너무 느림 ${ms.toFixed(1)}ms`);
+  return `${ms.toFixed(1)}ms/장 → 30fps 영상 1초 굽는 데 약 ${(ms * 30 / 1000).toFixed(2)}초`;
+});
+
+lines.push("\n── 만화 기법 ──"); out.textContent = lines.join("\n");
+
+await T("말풍선이 글자 길이에 맞춰 늘어난다", async () => {
+  const { drawBubble } = await import("/p/js/story/stage.js");
+  for (const txt of ["앗", "안녕하세요 반갑습니다", "아주 긴 대사를 넣어도 화면 밖으로 나가지 않고 줄이 나뉘어야 합니다"])
+    for (const k of [0, 0.3, 1]) drawBubble(cx, BOX, txt, k, { x: 30, y: 200 }, {});
+  return "3가지 길이 × 3시점";
+});
+await T("대사 지시가 말풍선으로 이어진다", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 왼쪽
+  개 대사 "안녕!"
+  자막 "그랬다"`, {});
+  const sc = s.scenes[0];
+  eq(sc.bubbles.length, 1, "말풍선 수");
+  eq(sc.bubbles[0].who, "개", "말한 이");
+  if (sc.subtitles[0].t0 <= sc.bubbles[0].t0) throw new Error("대사가 시간을 안 밀었음");
+  for (let t = 0; t < s.seconds; t += 0.2) s.drawAt(cx, BOX, t);
+});
+await T("멈칫이 화면을 잠깐 얼린다", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 왼쪽
+  개 이동 오른쪽 2초
+  멈칫 0.3초
+  자막 "쿵!"`, {});
+  eq(s.scenes[0].freezes.length, 1, "멈칫 수");
+  for (let t = 0; t < s.seconds; t += 0.1) s.drawAt(cx, BOX, t);
+});
+await T("스미어 — 빠르게 움직여도 안 깨진다", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 왼쪽끝
+  개 이동 오른쪽끝 0.4초
+  자막 "슝"`, {});
+  for (let t = 0; t < 1.2; t += 0.05) s.drawAt(cx, BOX, t);
+});
+await T("오려내기 전환이 다음 장면을 안 가둔다", () => {
+  for (const tr of ["동그라미", "별", "가로닦기", "세로닦기"]) {
+    const s = Stage.fromText(`장면 A
+  자막 "가"
+
+장면 B 전환:${tr}
+  자막 "나"`, {});
+    for (let t = 0; t < s.seconds; t += 0.1) s.drawAt(cx, BOX, t);
+  }
+  return "4종";
+});
+
+await T("앤티시페이션 — 가기 전에 반대로 살짝", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 왼쪽
+  개 이동 오른쪽 1.5초
+  자막 "간다"`, {});
+  const a = s.scenes[0].actors[0];
+  if (a.pos.length < 3) throw new Error("준비 동작이 안 들어감");
+  const 시작 = a.pos[1].from[0], 움츠림 = a.pos[1].to[0];
+  if (움츠림 >= 시작) throw new Error("반대로 안 움직임");
+  return `${시작.toFixed(2)} → ${움츠림.toFixed(2)} → ${a.pos[2].to[0].toFixed(2)}`;
+});
+await T("모션 트레일 — 빠를 때 잔상", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 왼쪽끝
+  개 이동 오른쪽끝 0.4초
+  자막 "슝"`, {});
+  for (let t = 0; t < 1; t += 0.04) s.drawAt(cx, BOX, t);
+});
+await T("자막 등장 연출 4가지", () => {
+  const { drawSubtitle } = window.__stage;
+  for (const m of ["팝", "타이핑", "올라옴", "튀어나옴"])
+    for (const k of [0, 0.1, 0.4, 1.5])
+      drawSubtitle(cx, BOX, "한 글자씩 나오는 자막입니다", k, { 등장: m });
+  return "4가지 × 4시점";
+});
+await T("타이핑은 시간이 지날수록 글자가 늘어난다", () => {
+  const c2 = document.createElement("canvas"); c2.width = 300; c2.height = 200;
+  const g = c2.getContext("2d");
+  const { drawSubtitle } = window.__stage;
+  const 잉크 = k => {
+    g.clearRect(0, 0, 300, 200);
+    drawSubtitle(g, { x: 0, y: 0, w: 300, h: 200 }, "가나다라마바사아자차", k,
+                 { 등장: "타이핑", 바탕: "없음" });
+    const d = g.getImageData(0, 0, 300, 200).data;
+    let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 20) n++;
+    return n;
+  };
+  const a = 잉크(0.05), b = 잉크(0.5);
+  if (!(b > a)) throw new Error(`글자가 안 늘어남 ${a} → ${b}`);
+  return `${a} → ${b} 픽셀`;
+});
+await T("만화 칸 테두리·인서트 컷", () => {
+  const s = Stage.fromText(`장면 A 칸:테두리 인서트:0.34
+  개 등장 가운데
+  자막 "만화처럼"`, {});
+  for (let t = 0; t < s.seconds; t += 0.2) s.drawAt(cx, BOX, t);
+  return "테두리 + 인서트";
+});
+
+lines.push("\n── 캐릭터 움직임·표정 ──"); out.textContent = lines.join("\n");
+
+await T("점프 — 포물선으로 떴다 내려온다", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 왼쪽
+  개 점프 오른쪽 0.8초
+  자막 "폴짝"`, {});
+  const a = s.scenes[0].actors[0];
+  eq(a.hop.length, 1, "점프 수");
+  for (let t = 0; t < s.seconds; t += 0.05) s.drawAt(cx, BOX, t);
+});
+await T("여러 지점 경로 이동", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 왼쪽끝
+  개 이동 왼쪽,가운데,오른쪽끝 3초
+  자막 "지나간다"`, {});
+  const a = s.scenes[0].actors[0];
+  if (a.pos.length < 4) throw new Error("경로가 안 쪼개짐: " + a.pos.length);
+  return a.pos.length + "구간";
+});
+await T("떨기·기울이기·방향전환", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 가운데
+  개 떨기 0.6초
+  개 기울이기 15 0.4초
+  개 방향 왼쪽
+  자막 "부들부들"`, {});
+  const a = s.scenes[0].actors[0];
+  eq(a.shakes.length, 1, "떨기"); eq(a.rot.length, 1, "기울이기"); eq(a.flips.length, 1, "방향");
+  for (let t = 0; t < s.seconds; t += 0.05) s.drawAt(cx, BOX, t);
+});
+await T("표정 세 방식 (즉시·팝·서서히)", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 가운데
+  개 표정 happy
+  개 표정 surprised 팝
+  개 표정 sad 서서히 0.5초
+  자막 "표정이 바뀐다"`, {});
+  const ev = s.scenes[0].actors[0].events.filter(e => e.kind === "표정");
+  eq(ev.length, 3, "표정 수");
+  eq(ev[1].방식, "팝", "둘째 방식");
+  eq(ev[2].방식, "서서히", "셋째 방식");
+  for (let t = 0; t < s.seconds; t += 0.05) s.drawAt(cx, BOX, t);
+});
+await T("표정 번갈아", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 가운데
+  개 표정반복 happy,surprised 0.4초
+  자막 "왔다갔다"`, {});
+  const ev = s.scenes[0].actors[0].events.filter(e => e.kind === "표정");
+  if (ev.length < 5) throw new Error("반복이 안 펼쳐짐");
+  if (ev[0].value === ev[1].value) throw new Error("같은 표정만 나옴");
+  return ev[0].value + " ↔ " + ev[1].value;
+});
+
+await T("이름에 띄어쓰기가 있어도 알아듣는다 (우리집 강아지 · 공원 잔디밭)", () => {
+  const { scenes, errors } = parseScript(`장면 공원 잔디밭 전환:페이드
+  우리집 강아지 등장 왼쪽 크기:0.6
+  우리집 강아지 표정 happy 팝
+  우리집 강아지 대사 "안녕!"`);
+  if (errors.length) throw new Error(errors.map(e => e.msg).join(" / "));
+  eq(scenes[0].bg, "공원 잔디밭", "배경 이름");
+  const who = new Set(scenes[0].steps.filter(s => s.who).map(s => s.who));
+  eq([...who].join(","), "우리집 강아지", "배우 이름");
+  eq(scenes[0].steps[0].spot, "왼쪽", "자리는 이름에 안 먹힘");
+  return "이름 3곳 모두 통과";
+});
+
+await T("숫자만 있으면 시간으로 읽지 않는다 (각도·크기와 헷갈림 방지)", () => {
+  const s = Stage.fromText(`장면 A
+  개 등장 가운데
+  개 기울이기 18 0.5초
+  자막 "가"`, {});
+  const r = s.scenes[0].actors[0].rot[0];
+  eq((r.t1 - r.t0).toFixed(2), "0.50", "기울이기 시간");
+  eq(r.to, 18, "각도");
+  if (s.seconds > 5) throw new Error("장면이 " + s.seconds + "초로 잘못 늘어남");
+  return `${s.seconds.toFixed(1)}초`;
+});
+
+lines.push("\n── 얼굴 찾기 ──"); out.textContent = lines.join("\n");
+
+const { findFace, applyFace } = await import("/p/js/char/facefind.js");
+const { DEFAULT_PARTS } = await import("/p/js/char/face.js");
+const loadImg = u => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = u; });
+
+/* 얼굴을 '찾았다' 고 한 것만 모은다.
+   자산 중에는 얼굴이 아예 없는 그림도 있다 (생각 풍선·소품 컷).
+   그런 것에 억지로 눈을 찍지 않는 것이 옳은 동작이라, 못 찾은 것은 따로 센다. */
+async function 정면들() {
+  const out = { 찾음: [], 못찾음: [] };
+  for (const c of library.characters.filter(x => (x.poses || {}).front)) {
+    const img = await loadImg(`/api/char/sprite?id=${c.id}&role=front`);
+    const f = findFace(img, "front");
+    (f.확신 >= 0.35 && f.eyeL && f.eyeR ? out.찾음 : out.못찾음).push({ c, img, f });
+  }
+  return out;
+}
+const 정면 = await 정면들();
+
+await T("정면 그림에서 눈 두 개를 찾는다", async () => {
+  if (!정면.찾음.length && !정면.못찾음.length) return "정면 그림 있는 캐릭터 없음 — 건너뜀";
+  for (const { c, f } of 정면.찾음) {
+    // 두 눈은 나란하고, 입은 그 아래에 있어야 한다
+    if (Math.abs(f.eyeL.y - f.eyeR.y) > 0.06) throw new Error(`${c.name} 두 눈 높이가 안 맞음`);
+    if (f.mouth.y <= Math.max(f.eyeL.y, f.eyeR.y)) throw new Error(`${c.name} 입이 눈 위에 있음`);
+  }
+  return `찾음 ${정면.찾음.map(x => `${x.c.name} ${(x.f.확신 * 100).toFixed(0)}%`).join(" · ")}` +
+         (정면.못찾음.length ? `　/　못 찾음 ${정면.못찾음.map(x => x.c.name).join(" · ")}` : "");
+});
+
+await T("얼굴이 없는 그림에는 억지로 눈을 찍지 않는다", async () => {
+  // 못 찾은 것은 확신이 0 에 가까워야 한다 — '어중간한 확신' 이 가장 나쁘다
+  const 어중간 = 정면.못찾음.filter(x => x.f.확신 > 0.15);
+  if (어중간.length) {
+    throw new Error("근거가 약한데 확신을 줌: " +
+      어중간.map(x => `${x.c.name} ${(x.f.확신 * 100).toFixed(0)}%`).join(", "));
+  }
+  return 정면.못찾음.length
+    ? 정면.못찾음.map(x => `${x.c.name} → ${x.f.사유 || "확신 0"}`).join(" · ")
+    : "못 찾은 그림 없음";
+});
+
+await T("찾은 눈 자리가 실제로 어두운 곳인가 (그림과 대조)", async () => {
+  if (!정면.찾음.length) return "찾은 얼굴 없음 — 건너뜀";
+  const { c, img, f } = 정면.찾음[0];
+  const n = 96;
+  const t = document.createElement("canvas"); t.width = n; t.height = n;
+  const g = t.getContext("2d", { willReadFrequently: true });
+  g.drawImage(img, 0, 0, n, n);
+  const d = g.getImageData(0, 0, n, n).data;
+  const 밝기 = (fx, fy) => {                   // 0~1 좌표 → 픽셀 (가로·세로를 따로 반올림해야 한다)
+    const i = (Math.round(fy * n) * n + Math.round(fx * n)) * 4;
+    return (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114);
+  };
+  const 눈밝기 = (밝기(f.eyeL.x, f.eyeL.y) + 밝기(f.eyeR.x, f.eyeR.y)) / 2;
+  // 얼굴 한가운데(눈 사이)는 밝아야 하고, 눈 자리는 어두워야 한다
+  const 사이 = 밝기((f.eyeL.x + f.eyeR.x) / 2, (f.eyeL.y + f.eyeR.y) / 2);
+  if (!(눈밝기 < 사이 - 40)) throw new Error(`눈 자리가 안 어두움 (눈 ${눈밝기.toFixed(0)} vs 사이 ${사이.toFixed(0)})`);
+  return `눈 ${눈밝기.toFixed(0)} · 얼굴 ${사이.toFixed(0)} (차이 ${(사이 - 눈밝기).toFixed(0)})`;
+});
+
+await T("못 찾으면 손대지 않고 알린다 (엉뚱한 자리에 안 찍음)", async () => {
+  const blank = document.createElement("canvas");
+  blank.width = 64; blank.height = 64;
+  const g = blank.getContext("2d");
+  g.fillStyle = "#f0e0c0"; g.fillRect(8, 8, 48, 48);       // 얼굴 없는 네모
+  const img = await loadImg(blank.toDataURL());
+  const parts = DEFAULT_PARTS("front");
+  const before = parts.eyeL.x;
+  const r = applyFace(parts, img, "front");
+  if (r.적용됨) throw new Error("얼굴이 없는데 찾았다고 함");
+  eq(parts.eyeL.x, before, "손대지 않음");
+  return `확신 ${(r.확신 * 100).toFixed(0)}%`;
+});
+
+await T("자산 창고가 얼굴을 맞춘 캐릭터를 내준다", async () => {
+  if (!library.characters.length) return "건너뜀";
+  library.clear();
+  await library.refresh(true);
+  const sp = await library.character(library.characters[0].name);
+  if (!sp) return "캐릭터를 못 불러옴";
+  const img = await loadImg(`/api/char/sprite?id=${library.characters[0].id}&role=front`);
+  const f = findFace(img);
+  const 차이 = Math.hypot(sp.parts.eyeL.x - f.eyeL.x, sp.parts.eyeL.y - f.eyeL.y);
+  // 저장된 설정이 있으면 그걸 쓰므로 다를 수 있다 — 아주 멀면 문제
+  if (차이 > 0.25) throw new Error(`눈 자리가 찾은 곳과 너무 다름 (${차이.toFixed(2)})`);
+  return `찾은 곳과 ${(차이 * 100).toFixed(0)}% 차이`;
+});
+
+await T("뒷모습에는 얼굴을 찍지 않는다", async () => {
+  const c = library.characters.find(x => (x.poses || {}).back);
+  if (!c) return "후면 그림이 있는 캐릭터 없음 — 건너뜀";
+  const img = await loadImg(`/api/char/sprite?id=${c.id}&role=back`);
+  const parts = DEFAULT_PARTS("back");
+  const r = applyFace(parts, img, "back");
+  if (r.적용됨) throw new Error("뒷모습에 얼굴을 찍음");
+  if (parts.eyeL.on !== false || parts.eyeR.on !== false) throw new Error("눈이 켜져 있음");
+  return r.사유 || "안 찍음";
+});
+/** 눈이 하나뿐인 옆얼굴을 그려 준다 (자산에 기대지 않고 늘 같은 조건으로 재려고).
+ *  자산의 'side' 슬롯에는 3/4 각도(두 눈이 다 보이는 그림)가 들어 있을 수 있어
+ *  그것으로는 '눈 하나' 상황을 시험할 수 없다. */
+function 옆얼굴그리기() {
+  const c = document.createElement("canvas");
+  c.width = 128; c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = "#f2d9b0";                       // 머리 (살색 덩어리)
+  g.beginPath(); g.ellipse(60, 58, 42, 40, 0, 0, 7); g.fill();
+  g.fillStyle = "#f2d9b0";                       // 주둥이 (오른쪽으로 튀어나옴)
+  g.beginPath(); g.ellipse(96, 68, 18, 13, 0, 0, 7); g.fill();
+  g.fillStyle = "#241c14";                       // 눈 하나
+  g.beginPath(); g.arc(74, 50, 6, 0, 7); g.fill();
+  g.beginPath(); g.ellipse(104, 70, 6, 4, 0, 0, 7); g.fill();   // 코·입
+  return c.toDataURL();
+}
+
+/* ── 어려운 얼굴 11가지 ──
+   자산이 몇 장 안 되고 다 비슷해서, 진짜 약점은 그려 봐야 드러난다.
+   각 그림에 '정답' 눈 자리를 적어 두고 얼마나 빗나가는지 잰다. */
+const 얼굴그림 = (그리기) => {
+  const S = 160;
+  const c = document.createElement("canvas");
+  c.width = S; c.height = S;
+  그리기(c.getContext("2d"), S);
+  return c;
+};
+const 얼굴바탕 = (g, 살 = "#f2d9b0") => {
+  g.clearRect(0, 0, 160, 160);
+  g.fillStyle = 살;
+  g.beginPath(); g.ellipse(80, 70, 54, 50, 0, 0, 7); g.fill();
+};
+const 눈점 = (g, x, y, r) => { g.fillStyle = "#241c14"; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
+const 입점 = (g, x, y) => { g.fillStyle = "#241c14"; g.beginPath(); g.ellipse(x, y, 9, 6, 0, 0, 7); g.fill(); };
+
+const 어려운얼굴 = [
+  ["보통", g => { 얼굴바탕(g); 눈점(g, 60, 62, 7); 눈점(g, 100, 62, 7); 입점(g, 80, 92); }, [60, 62], [100, 62]],
+  ["아주 작은 눈", g => { 얼굴바탕(g); 눈점(g, 62, 62, 3); 눈점(g, 98, 62, 3); 입점(g, 80, 90); }, [62, 62], [98, 62]],
+  ["판다처럼 큰 눈", g => { 얼굴바탕(g); 눈점(g, 56, 64, 15); 눈점(g, 104, 64, 15); 입점(g, 80, 96); }, [56, 64], [104, 64]],
+  ["감은 눈 (─ ─)", g => { 얼굴바탕(g);
+    g.strokeStyle = "#241c14"; g.lineWidth = 4; g.lineCap = "round";
+    g.beginPath(); g.moveTo(50, 62); g.lineTo(70, 62); g.stroke();
+    g.beginPath(); g.moveTo(90, 62); g.lineTo(110, 62); g.stroke(); 입점(g, 80, 92); }, [60, 62], [100, 62]],
+  ["큰 귀 (토끼)", g => { 얼굴바탕(g);
+    g.fillStyle = "#f2d9b0";
+    g.beginPath(); g.ellipse(56, 18, 10, 26, 0, 0, 7); g.fill();
+    g.beginPath(); g.ellipse(104, 18, 10, 26, 0, 0, 7); g.fill();
+    g.fillStyle = "#e0a0a0";
+    g.beginPath(); g.ellipse(56, 18, 5, 18, 0, 0, 7); g.fill();
+    g.beginPath(); g.ellipse(104, 18, 5, 18, 0, 0, 7); g.fill();
+    눈점(g, 62, 66, 7); 눈점(g, 98, 66, 7); 입점(g, 80, 94); }, [62, 66], [98, 66]],
+  ["얼룩무늬", g => { 얼굴바탕(g, "#f6f0e6");
+    g.fillStyle = "#3a3430";
+    g.beginPath(); g.ellipse(44, 46, 14, 11, 0.4, 0, 7); g.fill();
+    g.beginPath(); g.ellipse(116, 92, 12, 9, -0.3, 0, 7); g.fill();
+    눈점(g, 64, 66, 7); 눈점(g, 96, 66, 7); 입점(g, 80, 94); }, [64, 66], [96, 66]],
+  ["안경", g => { 얼굴바탕(g); 눈점(g, 60, 62, 6); 눈점(g, 100, 62, 6);
+    g.strokeStyle = "#3a3430"; g.lineWidth = 3;
+    g.beginPath(); g.arc(60, 62, 14, 0, 7); g.stroke();
+    g.beginPath(); g.arc(100, 62, 14, 0, 7); g.stroke(); 입점(g, 80, 94); }, [60, 62], [100, 62]],
+  ["몸까지 나온 전신", g => { g.clearRect(0, 0, 160, 160);
+    g.fillStyle = "#f2d9b0";
+    g.beginPath(); g.ellipse(80, 118, 30, 34, 0, 0, 7); g.fill();
+    g.beginPath(); g.ellipse(80, 50, 34, 32, 0, 0, 7); g.fill();
+    눈점(g, 68, 46, 5); 눈점(g, 92, 46, 5);
+    g.fillStyle = "#241c14"; g.beginPath(); g.ellipse(80, 66, 7, 5, 0, 0, 7); g.fill(); }, [68, 46], [92, 46]],
+];
+
+await T("어려운 얼굴 8가지에서 눈을 정확히 찾는다", async () => {
+  const 결과 = [];
+  for (const [이름, 그리기, 답L, 답R] of 어려운얼굴) {
+    const f = findFace(얼굴그림(그리기), "front");
+    if (!f.eyeL || !f.eyeR || f.확신 < 0.35)
+      throw new Error(`${이름}: 못 찾음 (${f.사유 || (f.확신 * 100).toFixed(0) + "%"})`);
+    const 빗 = Math.max(
+      Math.hypot(f.eyeL.x - 답L[0] / 160, f.eyeL.y - 답L[1] / 160),
+      Math.hypot(f.eyeR.x - 답R[0] / 160, f.eyeR.y - 답R[1] / 160));
+    if (빗 > 0.06) throw new Error(`${이름}: ${(빗 * 100).toFixed(1)}% 빗나감`);
+    결과.push(`${이름} ${(빗 * 100).toFixed(1)}%`);
+  }
+  return 결과.join(" · ");
+});
+
+await T("고개를 갸웃해도 찾는다 (16도 기울임)", () => {
+  const cv = 얼굴그림(g => {
+    g.clearRect(0, 0, 160, 160);
+    g.save(); g.translate(80, 70); g.rotate(0.28); g.translate(-80, -70);
+    얼굴바탕(g); 눈점(g, 60, 62, 7); 눈점(g, 100, 62, 7); 입점(g, 80, 92);
+    g.restore();
+  });
+  const f = findFace(cv, "front");
+  if (!f.eyeL || !f.eyeR) throw new Error("못 찾음: " + (f.사유 || ""));
+  const 기울기 = Math.abs(f.eyeR.y - f.eyeL.y) / Math.abs(f.eyeR.x - f.eyeL.x);
+  if (기울기 < 0.15) throw new Error("기운 눈이 아니라 딴것을 찾음");
+  return `기울기 ${(Math.atan(기울기) * 180 / Math.PI).toFixed(0)}도 · 확신 ${(f.확신 * 100).toFixed(0)}%`;
+});
+
+await T("얼굴이 아닌 그림(소품·풍선)에는 눈을 안 찍는다", () => {
+  const cv = 얼굴그림(g => {
+    g.clearRect(0, 0, 160, 160);
+    g.fillStyle = "#fdf6e8";                        // 흰 생각 풍선
+    g.beginPath(); g.ellipse(80, 76, 62, 52, 0, 0, 7); g.fill();
+    g.fillStyle = "#e8425a"; g.beginPath(); g.arc(56, 52, 9, 0, 7); g.fill();     // 하트
+    g.fillStyle = "#c98a3a"; g.beginPath(); g.ellipse(96, 90, 20, 12, 0, 0, 7); g.fill();
+    g.fillStyle = "#8a6a3a"; g.beginPath(); g.ellipse(60, 100, 16, 9, 0.3, 0, 7); g.fill();
+  });
+  const f = findFace(cv, "front");
+  if (f.eyeL && f.eyeR && f.확신 >= 0.35) throw new Error("얼굴이 없는데 찾음");
+  return f.사유 || `확신 ${(f.확신 * 100).toFixed(0)}%`;
+});
+
+await T("귀와 눈을 짝지어 버리지 않는다 (나란한 짝이 먼저)", () => {
+  // 왼쪽 귀 안쪽 무늬가 오른쪽 눈과 '기운 짝' 을 이룰 수 있는 배치
+  const cv = 얼굴그림(g => {
+    얼굴바탕(g);
+    g.fillStyle = "#c98a8a";
+    g.beginPath(); g.ellipse(34, 34, 9, 12, 0, 0, 7); g.fill();     // 귀 안쪽
+    눈점(g, 60, 62, 7); 눈점(g, 100, 62, 7); 입점(g, 80, 92);
+  });
+  const f = findFace(cv, "front");
+  if (!f.eyeL || !f.eyeR) throw new Error("못 찾음");
+  if (Math.abs(f.eyeL.y - f.eyeR.y) > 0.03) throw new Error("기운 짝을 고름 (귀를 눈으로 봄)");
+  const 빗 = Math.hypot(f.eyeL.x - 60 / 160, f.eyeL.y - 62 / 160);
+  if (빗 > 0.06) throw new Error(`왼쪽 눈이 ${(빗 * 100).toFixed(1)}% 빗나감 — 귀를 골랐을 수 있음`);
+  return "진짜 눈 한 쌍을 고름";
+});
+
+await T("정면인데 눈이 하나뿐이면 받아들이지 않는다", async () => {
+  const img = await loadImg(옆얼굴그리기());
+  const parts = DEFAULT_PARTS("front");
+  const 전 = { x: parts.eyeL.x, y: parts.eyeL.y };
+  const r = applyFace(parts, img, "front");      // 옆얼굴을 정면이라 우겨 본다
+  if (r.적용됨) throw new Error("근거가 약한데 적용함");
+  eq(parts.eyeL.x, 전.x, "손대지 않음");
+  return r.사유 || "거부함";
+});
+
+await T("같은 옆얼굴을 '옆모습' 이라고 하면 눈 하나를 받아들인다", async () => {
+  const img = await loadImg(옆얼굴그리기());
+  const parts = DEFAULT_PARTS("side");
+  const r = applyFace(parts, img, "side");
+  if (!r.적용됨) return `아직 못 받음 (${r.사유 || "확신 " + (r.확신 * 100).toFixed(0) + "%"})`;
+  if (parts.eyeL?.on) throw new Error("옆모습인데 반대쪽 눈까지 켬");
+  return `눈 ${parts.eyeR.x.toFixed(2)},${parts.eyeR.y.toFixed(2)} · 확신 ${(r.확신 * 100).toFixed(0)}%`;
+});
+
+lines.push("\n── 🧩 조각 · 🎵 음악 자산 ──"); out.textContent = lines.join("\n");
+
+const PF = await import("/p/js/story/prefabs.js");
+
+await T("조각 표를 못 읽었으면 대본을 손대지 않는다", () => {
+  PF.조각비우기();
+  const 글 = "장면 <들판>\n  조각 <아침 인사>\n  자막 \"끝\"";
+  if (PF.expandPrefabs(글) !== 글) throw new Error("표도 없이 바꿔 버림");
+  return "원본 그대로";
+});
+
+await T("조각을 실제 줄로 펼친다 (들여쓰기 유지)", async () => {
+  await PF.loadPrefabs(true);
+  const 이름 = "_점검조각_" + Math.floor(performance.now());
+  const r = await (await fetch("/api/prefab/save", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: 이름, text: '자막 "안녕"\n자막 "반가워"' }) })).json();
+  try {
+    await PF.loadPrefabs(true);
+    const 펼친것 = PF.expandPrefabs(`장면 <들판>\n  조각 <${r.item.name}>`);
+    const 줄 = 펼친것.split("\n");
+    eq(줄.length, 3, "줄 수");
+    eq(줄[1], '  자막 "안녕"', "첫 줄 들여쓰기");
+    eq(줄[2], '  자막 "반가워"', "둘째 줄 들여쓰기");
+    // 실제로 대본으로 읽히는가 — 자막 두 개면 컷도 두 개다
+    const d = parseScript(펼친것);
+    eq(d.errors.length, 0, "오류 수");
+    return `${줄.length}줄로 펼침 · 오류 0`;
+  } finally {
+    await fetch("/api/prefab/delete", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: r.item.id }) });
+    await PF.loadPrefabs(true);
+  }
+});
+
+await T("조각이 조각을 불러도 무한 고리에 빠지지 않는다", async () => {
+  const 이름 = "_고리_" + Math.floor(performance.now());
+  const r = await (await fetch("/api/prefab/save", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: 이름, text: `자막 "돈다"\n조각 <${이름}>` }) })).json();
+  try {
+    await PF.loadPrefabs(true);
+    const t0 = performance.now();
+    const 펼친것 = PF.expandPrefabs(`조각 <${r.item.name}>`);
+    const 걸린것 = performance.now() - t0;
+    if (걸린것 > 300) throw new Error(`너무 오래 걸림 ${걸린것.toFixed(0)}ms`);
+    return `${펼친것.split("\n").length}줄에서 멈춤 · ${걸린것.toFixed(1)}ms`;
+  } finally {
+    await fetch("/api/prefab/delete", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: r.item.id }) });
+    await PF.loadPrefabs(true);
+  }
+});
+
+await T("대본(StoryDoc)이 조각을 펼친 채로 읽는다", async () => {
+  const 이름 = "_문서조각_" + Math.floor(performance.now());
+  const r = await (await fetch("/api/prefab/save", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: 이름, text: '자막 "하나"\n자막 "둘"' }) })).json();
+  try {
+    await PF.loadPrefabs(true);
+    const doc = new StoryDoc(`장면 <들판>\n  조각 <${r.item.name}>`);
+    if (doc.text.indexOf("조각") < 0) throw new Error("원본 글이 바뀌어 버림 (저장하면 조각이 사라진다)");
+    const 컷 = doc.parsed.scenes[0].steps.filter(s => s.kind === "자막").length;
+    eq(컷, 2, "자막 수");
+    return "원본은 그대로, 읽기는 펼쳐서";
+  } finally {
+    await fetch("/api/prefab/delete", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: r.item.id }) });
+    await PF.loadPrefabs(true);
+  }
+});
+
+await T("음악이 자산 목록에 들어 있다 (이름·길이·시리즈)", async () => {
+  const d = await (await fetch("/api/audio/list")).json();
+  if (!d.items) throw new Error("목록을 못 읽음");
+  if (!d.items.length) return "올려 둔 음악 없음 — 건너뜀";
+  const x = d.items[0];
+  for (const k of ["id", "name", "file", "group", "tags", "초"])
+    if (!(k in x)) throw new Error(`'${k}' 가 빠짐`);
+  return `${d.items.length}개 · 첫 곡 "${x.name}" ${x.초}초`;
+});
+
+await T("음악·조각이 시리즈 자산 목록에 함께 나온다", async () => {
+  const d = await (await fetch("/api/group/assets")).json();
+  const 센것 = {};
+  (d.items || []).forEach(x => { 센것[x.종류] = (센것[x.종류] || 0) + 1; });
+  if (!("음악" in 센것)) throw new Error("음악이 시리즈 자산에 안 잡힘");
+  return Object.entries(센것).map(([k, n]) => `${k} ${n}`).join(" · ");
+});
+
+lines.push("\n── 💬 자막 꾸미기 ──"); out.textContent = lines.join("\n");
+
+const SUB = await import("/p/js/story/subtitle.js");
+
+await T("색 코드(#ffffff)를 주석으로 잘라 먹지 않는다", () => {
+  const d = parseScript('장면 <들판>\n  자막 "가" 색:#ffffff 테두리색:#003366 바탕:없음');
+  const o = d.scenes[0].steps[0].opt;
+  eq(o.색, "#ffffff", "글자 색");
+  eq(o.테두리색, "#003366", "테두리 색");
+  eq(o.바탕, "없음", "바탕");
+  return "색은 살고";
+});
+await T("진짜 주석(# 설명)은 여전히 잘린다", () => {
+  const d = parseScript('장면 <들판>\n  자막 "가" 색:#fc0   # 이건 설명');
+  const o = d.scenes[0].steps[0].opt;
+  eq(o.색, "#fc0", "짧은 색 코드");
+  if ("이건" in o) throw new Error("주석이 안 잘림");
+  return "주석은 잘리고";
+});
+
+await T("차림표를 고르면 한 벌이 통째로 정해진다", () => {
+  const o = SUB.모양읽기({ 차림표: "유튜브" });
+  const p = SUB.PRESETS["유튜브"].값;
+  eq(o.글꼴, p.글꼴, "글꼴"); eq(o.바탕, p.바탕, "바탕"); eq(o.색, p.색, "색");
+  return `${o.글꼴} · 바탕 ${o.바탕}`;
+});
+await T("차림표 위에 한 낱말만 덧칠할 수 있다", () => {
+  const o = SUB.모양읽기({ 차림표: "유튜브", 가로: "왼쪽", 테두리: "0.2" });
+  eq(o.가로, "왼쪽", "가로"); eq(o.테두리, 0.2, "테두리");
+  eq(o.글꼴, SUB.PRESETS["유튜브"].값.글꼴, "나머지는 차림표대로");
+  return "덧칠만 바뀜";
+});
+await T("모르는 글꼴·바탕은 조용히 무시하고 기본을 지킨다", () => {
+  const 기 = SUB.기본모양();
+  const o = SUB.모양읽기({ 글꼴: "없는글꼴", 바탕: "없는바탕" });
+  eq(o.글꼴, 기.글꼴, "글꼴"); eq(o.바탕, 기.바탕, "바탕");
+  return "기본 유지";
+});
+
+await T("글꼴 8종이 실제로 실린다", async () => {
+  await SUB.loadFonts();
+  const 실린것 = SUB.FONT_NAMES.filter(n =>
+    [...document.fonts].some(f => f.family === n && f.status === "loaded"));
+  if (실린것.length < SUB.FONT_NAMES.length)
+    throw new Error(`${실린것.length}/${SUB.FONT_NAMES.length}만 실림`);
+  return 실린것.join(" · ");
+});
+
+await T("가로 자리(왼쪽·가운데·오른쪽)가 실제로 다른 데 그려진다", async () => {
+  await SUB.loadFonts();
+  const c = document.createElement("canvas"); c.width = 400; c.height = 700;
+  const g = c.getContext("2d");
+  const box = { x: 0, y: 0, w: 400, h: 700 };
+  const 자리 = {};
+  for (const 가로 of ["왼쪽", "가운데", "오른쪽"]) {
+    g.clearRect(0, 0, 400, 700);
+    const r = SUB.drawSubtitle(g, box, "가나다", 1, { 가로, 바탕: "박스" });
+    자리[가로] = Math.round(r.x + r.w / 2);
+  }
+  if (!(자리["왼쪽"] < 자리["가운데"] && 자리["가운데"] < 자리["오른쪽"]))
+    throw new Error(`자리가 안 나뉨: ${JSON.stringify(자리)}`);
+  return `${자리["왼쪽"]} < ${자리["가운데"]} < ${자리["오른쪽"]}`;
+});
+
+await T("세로 자리(위·가운데·아래)가 실제로 다른 데 그려진다", async () => {
+  const c = document.createElement("canvas"); c.width = 400; c.height = 700;
+  const g = c.getContext("2d");
+  const box = { x: 0, y: 0, w: 400, h: 700 };
+  const 자리 = {};
+  for (const 세로 of ["위", "가운데", "아래"]) {
+    const r = SUB.drawSubtitle(g, box, "가나다", 1, { 세로, 바탕: "박스" });
+    자리[세로] = Math.round(r.y);
+  }
+  if (!(자리["위"] < 자리["가운데"] && 자리["가운데"] < 자리["아래"]))
+    throw new Error(`자리가 안 나뉨: ${JSON.stringify(자리)}`);
+  return `${자리["위"]} < ${자리["가운데"]} < ${자리["아래"]}`;
+});
+
+await T("바탕 '없음' 은 정말로 아무것도 안 칠한다", () => {
+  const c = document.createElement("canvas"); c.width = 300; c.height = 300;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  const box = { x: 0, y: 0, w: 300, h: 300 };
+  const 센다 = 적은것 => {
+    g.clearRect(0, 0, 300, 300);
+    SUB.drawSubtitle(g, box, "가", 1, { 세로: "가운데", ...적은것 });
+    const d = g.getImageData(0, 0, 300, 300).data;
+    let n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 8) n++;
+    return n;
+  };
+  const 없음 = 센다({ 바탕: "없음" });
+  const 박스 = 센다({ 바탕: "박스" });
+  if (!(박스 > 없음 * 1.5)) throw new Error(`박스가 더 안 칠해짐 (없음 ${없음} · 박스 ${박스})`);
+  return `없음 ${없음}칸 · 박스 ${박스}칸`;
+});
+
+await T("테두리를 주면 칠해지는 넓이가 늘어난다", () => {
+  const c = document.createElement("canvas"); c.width = 300; c.height = 300;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  const box = { x: 0, y: 0, w: 300, h: 300 };
+  const 센다 = 테 => {
+    g.clearRect(0, 0, 300, 300);
+    SUB.drawSubtitle(g, box, "가", 1, { 세로: "가운데", 바탕: "없음", 테두리: 테 });
+    const d = g.getImageData(0, 0, 300, 300).data;
+    let n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 8) n++;
+    return n;
+  };
+  const 민 = 센다(0), 두꺼운 = 센다(0.2);
+  if (!(두꺼운 > 민)) throw new Error(`안 늘어남 (${민} → ${두꺼운})`);
+  return `${민}칸 → ${두꺼운}칸`;
+});
+
+await T("고른 모양이 대본 글로 되돌아간다 (글 → 값 → 글)", () => {
+  const 값 = SUB.모양읽기({ 차림표: "예능", 가로: "왼쪽" });
+  const 글 = SUB.모양쓰기(값);
+  const 다시 = SUB.모양읽기(Object.fromEntries(
+    글.split(" ").map(p => p.split(":"))));
+  for (const k of ["글꼴", "크기", "색", "가로", "바탕", "테두리"])
+    if (String(값[k]) !== String(다시[k])) throw new Error(`${k}: ${값[k]} ≠ ${다시[k]}`);
+  return 글;
+});
+
+await T("무대가 대본 첫머리의 자막 설정을 읽는다", () => {
+  const doc = new StoryDoc('자막차림표: 만화\n자막가로: 오른쪽\n\n장면 <들판>\n  자막 "가"');
+  const o = new Stage(doc.parsed, {}).subtitleDefaults();
+  eq(o.바탕, SUB.PRESETS["만화"].값.바탕, "바탕");
+  eq(o.가로, "오른쪽", "가로");
+  return `${o.글꼴} · ${o.바탕} · ${o.가로}`;
+});
+
+lines.push("\n── 🔎 대본 살펴보기 ──"); out.textContent = lines.join("\n");
+
+const LINT = await import("/p/js/story/lint.js");
+await library.refresh(true);
+const 살핌들 = async 글 => (await LINT.lintScript(parseScript(글))).filter(x => x.등급 !== "알림");
+
+await T("따옴표를 안 닫으면 알려 준다", async () => {
+  const r = await 살핌들('장면 <들판>\n  자막 "안 닫음\n  자막 "끝"');
+  const w = r.find(x => /따옴표/.test(x.msg));
+  if (!w) throw new Error("조용히 넘어감");
+  eq(w.line, 2, "줄 번호");
+  if (w.고친줄 !== '  자막 "안 닫음"') throw new Error("고칠 글이 틀림: " + w.고친줄);
+  return "2줄 · 고침까지";
+});
+await T("꺾쇠 짝이 안 맞으면 알려 준다", async () => {
+  const r = await 살핌들('장면 <들판>\n  <누렁 등장 왼쪽\n  자막 "가"');
+  if (!r.some(x => /꺾쇠/.test(x.msg))) throw new Error("조용히 넘어감");
+  return "잡음";
+});
+await T("시간에 '초' 를 빠뜨리면 알려 주고 들여쓰기를 지킨다", async () => {
+  const r = await 살핌들('장면 <들판>\n  자막 "가"\n  대기 3');
+  const w = r.find(x => /초/.test(x.msg));
+  if (!w) throw new Error("조용히 넘어감");
+  eq(w.고친줄, "  대기 3초", "고칠 글");
+  return w.고친줄.replace(/ /g, "·");
+});
+await T("각도를 받는 '기울이기 18' 은 건드리지 않는다", async () => {
+  const r = await 살핌들('장면 <들판>\n  <누렁이> 등장 왼쪽\n  <누렁이> 기울이기 18\n  자막 "가"');
+  if (r.some(x => /초/.test(x.msg))) throw new Error("멀쩡한 것을 잡음");
+  return "안 건드림";
+});
+
+await T("없는 캐릭터 이름을 잡고 비슷한 것을 알려 준다", async () => {
+  const 있는것 = library.characters.map(c => c.name);
+  if (!있는것.length) return "캐릭터 없음 — 건너뜀";
+  const 진짜 = 있는것[0];
+  const 오타 = 진짜.slice(0, -1) + (진짜.slice(-1) === "가" ? "나" : "가");
+  const r = await 살핌들(`장면 <들판>\n  <${오타}> 등장 왼쪽\n  자막 "가"`);
+  const w = r.find(x => x.msg.includes(오타));
+  if (!w) throw new Error("조용히 넘어감");
+  if (w.고침?.새 !== 진짜) throw new Error(`제안이 틀림: ${w.고침?.새}`);
+  return `"${오타}" → "${진짜}"`;
+});
+await T("아주 다른 이름에는 엉뚱한 제안을 하지 않는다", async () => {
+  const r = await 살핌들('장면 <들판>\n  <ZZZZ전혀다른이름> 등장 왼쪽\n  자막 "가"');
+  const w = r.find(x => x.msg.includes("ZZZZ"));
+  if (w?.고침) throw new Error("억지 제안: " + w.고침.새);
+  return "제안 안 함";
+});
+await T("자막이 하나도 없으면 0초라고 알려 준다", async () => {
+  const r = await 살핌들("장면 <들판>\n  카메라 줌인 2초");
+  if (!r.some(x => /0초/.test(x.msg))) throw new Error("조용히 넘어감");
+  return "잡음";
+});
+await T("멀쩡한 대본에는 아무 말도 하지 않는다", async () => {
+  const 배경 = library.backgrounds[0]?.name || "들판";
+  const r = await 살핌들(`장면 <${배경}>\n  자막 "안녕"\n  대기 1초\n  자막 "끝"`);
+  if (r.length) throw new Error("멀쩡한데 잡음: " + r.map(x => x.msg).join(" / "));
+  return "조용함";
+});
+await T("색 코드 자리에서 주석 자르기가 경고를 만들지 않는다", async () => {
+  const r = await 살핌들('장면 <들판>\n  자막 "가" 색:#ffffff 테두리색:#003366');
+  if (r.some(x => /꺾쇠|따옴표/.test(x.msg))) throw new Error("헛경고: " + r[0].msg);
+  return "조용함";
+});
+
+lines.push("\n── 🎭 포즈 갈아 끼우기 ──"); out.textContent = lines.join("\n");
+
+await T("포즈 문법을 알아듣는다", () => {
+  const d = parseScript('장면 <들판>\n  <누렁> 등장 가운데\n  <누렁> 포즈 sleep\n  자막 "가"');
+  eq(d.errors.length, 0, "오류 수");
+  const st = d.scenes[0].steps.find(s => s.kind === "포즈");
+  if (!st) throw new Error("포즈 지시를 못 만듦");
+  eq(st.role, "sleep", "포즈 이름");
+  eq(st.who, "누렁", "누구");
+  return "`모습` 도 같은 말";
+});
+await T("포즈 이름을 빠뜨리면 알려 준다", () => {
+  const d = parseScript('장면 <들판>\n  <누렁> 등장 가운데\n  <누렁> 포즈\n  자막 "가"');
+  if (!d.errors.length) throw new Error("조용히 넘어감");
+  return d.errors[0].msg;
+});
+await T("쓰는 포즈만 골라 받는다 (다 받으면 느려진다)", () => {
+  const doc = new StoryDoc('장면 <들판>\n  <누렁> 등장 가운데\n' +
+                           '  <누렁> 포즈 sleep\n  자막 "가"\n  <누렁> 포즈 angry\n  자막 "나"');
+  const n = new Stage(doc.parsed, {}).needs();
+  const 것 = (n.포즈 || {})["누렁"] || [];
+  eq(것.length, 2, "받을 포즈 수");
+  if (!것.includes("sleep") || !것.includes("angry")) throw new Error("빠짐: " + 것);
+  return 것.join(", ");
+});
+await T("포즈가 그 시각부터 바뀌고, 없는 포즈는 기본으로 둔다", () => {
+  const doc = new StoryDoc('장면 <들판>\n  <누렁> 등장 가운데\n  자막 "가" 1초\n' +
+                           '  <누렁> 포즈 sleep\n  자막 "나" 1초\n' +
+                           '  <누렁> 포즈 없는것\n  자막 "다" 1초');
+  const 기본 = { 이름: "기본" }, 잠 = { 이름: "잠" };
+  const st = new Stage(doc.parsed, { 배우: { 누렁: 기본 }, 배경: {}, 포즈: { 누렁: { sleep: 잠 } } });
+  const a = st.scenes[0].actors.find(x => x.name === "누렁");
+  const 뭐 = t => st.배우그림(a, t)?.이름;
+  eq(뭐(0.5), "기본", "0.5초");
+  eq(뭐(1.5), "잠", "1.5초");
+  eq(뭐(2.5), "기본", "2.5초 (없는 포즈 → 기본)");
+  return "0.5기본 · 1.5잠 · 2.5기본";
+});
+await T("포즈를 안 쓰면 예전과 똑같이 그린다", () => {
+  const doc = new StoryDoc('장면 <들판>\n  <누렁> 등장 가운데\n  자막 "가"');
+  const 기본 = { 이름: "기본" };
+  const st = new Stage(doc.parsed, { 배우: { 누렁: 기본 }, 배경: {} });
+  const a = st.scenes[0].actors.find(x => x.name === "누렁");
+  eq(st.배우그림(a, 0.5)?.이름, "기본", "그림");
+  return "그대로";
+});
+
+await T("문법 글에 캐릭터의 포즈가 실린다", async () => {
+  const { buildGuide } = await import("/p/js/story/guide.js");
+  const 글 = await buildGuide({ group: "" });
+  if (!/#+ 🐕 캐릭터/.test(글)) throw new Error("캐릭터 절이 없음");
+  const 여럿 = library.characters.find(c => Object.keys(c.poses || {}).length > 1);
+  if (!여럿) return "포즈 여럿인 캐릭터 없음 — 건너뜀";
+  const role = Object.keys(여럿.poses)[0];
+  if (!글.includes(`\`${role}\``)) throw new Error(`"${여럿.name}" 의 포즈가 안 실림`);
+  return `${여럿.name} 의 포즈가 글에 있음 · ${글.length.toLocaleString()}자`;
+});
+
+/* ── 밖의 LLM 이 써 온 글을 견디는가 ──
+   실제로 겪은 일이다. 클로드에게 MD 를 주고 대본을 시켰더니 마크다운 버릇이 딸려 왔고,
+   그 줄들이 전부 "무슨 말인지 모르겠습니다" 가 됐다. */
+await T("마크다운 꾸밈이 섞여도 안 깨진다", async () => {
+  const 글 = [
+    "## 비몽사몽 1화",
+    "제목: 시험",
+    "───────────── 0~7초 · 도입부",
+    "장면 <밤바다>   전환:페이드",
+    "  - <개> 등장 가운데",
+    "  * 자막 \"글머리표가 붙어도\"",
+    "═══════════ 7~14초",
+    "**장면 <아침 들판>   분위기:아침**",
+    "  1. 자막 \"번호가 붙어도\"",
+    "// 이건 주석",
+    "· · · · ·",
+  ].join("\n");
+  const p = parseScript(글);
+  if (p.errors.length) throw new Error(`오류 ${p.errors.length}개: ${p.errors[0].msg}`);
+  eq(p.scenes.length, 2, "장면 수");
+  eq(p.meta.제목, "시험", "제목");
+  const 자막수 = p.scenes.reduce((a, s) => a + s.steps.filter(x => x.kind === "자막").length, 0);
+  eq(자막수, 2, "자막 수");
+  return "구분선·글머리표·굵게·번호·// 를 다 걷어냄";
+});
+
+await T("없는 낱말은 검사에서 잡힌다", async () => {
+  const { lintScript } = await import("/p/js/story/lint.js");
+  const 글 = [
+    "장면 <숲>   전환:어둠   분위기:몽롱",
+    "  <개> 등장 가운데 동작:sway2",
+    "  <개> 상태 나른함",
+    "  효과 반짝반짝",
+    "  카메라 확대하기 1초",
+    "  자막 \"틀린 것 투성이\" 차림표:방송 글꼴:명조 등장:스르륵 세로:중간",
+  ].join("\n");
+  const 살핌 = await lintScript(parseScript(글));
+  const 잡은것 = 살핌.filter(x => /없는 말이라/.test(x.msg)).length;
+  if (잡은것 < 9) throw new Error(`9개 넘게 잡아야 하는데 ${잡은것}개만 잡음`);
+  // 고칠 것을 제안하는가
+  if (!살핌.some(x => /sway/.test(x.msg))) throw new Error("sway2 → sway 제안이 없음");
+  return `${잡은것}개를 잡고 닮은 낱말을 제안함`;
+});
+
+await T("문법 글의 보기 대본이 실제로 통과한다", async () => {
+  const { buildGuide } = await import("/p/js/story/guide.js");
+  const md = await buildGuide({ group: "" });
+  const 덩이 = [...md.matchAll(/```\n([\s\S]*?)```/g)].map(m => m[1]);
+  const 대본 = 덩이[덩이.length - 1];
+  if (!/장면 </.test(대본)) throw new Error("마지막 덩이가 대본이 아님");
+  const p = parseScript(대본);
+  if (p.errors.length) throw new Error(`오류: ${p.errors[0].line}줄 ${p.errors[0].msg}`);
+  if ((p.warnings || []).length) throw new Error(`경고: ${p.warnings[0].msg}`);
+  const doc = new StoryDoc(대본); await doc.build(library);
+  if (doc.seconds < 24 || doc.seconds > 38)
+    throw new Error(`30초라고 적어 놓고 ${doc.seconds.toFixed(1)}초`);
+  return `오류·경고 0 · ${doc.seconds.toFixed(1)}초`;
+});
+
+await T("＋ 새 이야기 보기글이 통과한다", async () => {
+  const 원 = await (await fetch("/p/js/workshop/story_step.js")).text();
+  const m = 원.match(/const 새대본 = `([\s\S]*?)`;/);
+  if (!m) throw new Error("새대본을 못 찾음");
+  const p = parseScript(m[1]);
+  if (p.errors.length) throw new Error(`오류: ${p.errors[0].line}줄 ${p.errors[0].msg}`);
+  if ((p.warnings || []).length) throw new Error(`경고: ${p.warnings[0].msg}`);
+  const doc = new StoryDoc(m[1]); await doc.build(library);
+  const 쓴것 = new Set();
+  p.scenes.forEach(s => s.steps.forEach(x => 쓴것.add(x.kind)));
+  // 기능을 두루 보여 주는 것이 이 보기글의 목적이다
+  for (const k of ["등장", "이동", "상태", "효과", "카메라", "화면", "시간", "멈칫", "소품선언", "대사"])
+    if (!쓴것.has(k)) throw new Error(`보기글에 '${k}' 가 없음`);
+  return `${doc.seconds.toFixed(1)}초 · 지시 ${쓴것.size}종`;
+});
+
+await T("자막 꾸미기 미리보기는 원래 자막을 안 그린다", async () => {
+  const doc = new StoryDoc('장면 <밤바다>\n  자막 "원래 자막"');
+  await doc.build(library);
+  const 재기 = 짓 => {
+    const c = document.createElement("canvas"); c.width = 240; c.height = 420;
+    const g = c.getContext("2d");
+    doc.stage.drawAt(g, { x: 0, y: 0, w: 240, h: 420 }, 0.5, 짓);
+    const d = g.getImageData(0, 300, 240, 120).data;
+    let 합 = 0; for (let i = 0; i < d.length; i += 4) 합 += d[i] + d[i + 1] + d[i + 2];
+    return 합;
+  };
+  const 있 = 재기({}), 없 = 재기({ 자막빼고: true });
+  if (있 === 없) throw new Error("자막빼고 를 줘도 그림이 같음");
+  if (재기({}) !== 있) throw new Error("다시 그리면 자막이 안 돌아옴");
+  return "자막만 빠지고, 다음 그리기에 되돌아옴";
+});
+
+await T("포즈 이름을 시점으로 써도 그리기가 안 죽는다", async () => {
+  /* 실제로 겪었다. `포즈 angry` 가 부위 움직임 함수에 시점(front/side/back) 자리로 흘러들어
+     AXIS["angry"].x 에서 터졌다. 굽기가 그 편에서 통째로 멈췄다. */
+  const { PART_EFFECTS } = await import("/p/js/char/face.js");
+  const R = await import("/p/js/char/rig.js");
+  let 죽은것 = [];
+  for (const [이름, e] of Object.entries(PART_EFFECTS)) {
+    for (const v of ["front", "side", "back", "angry", "sleep", undefined, null, ""]) {
+      try { e.fn(0.5, 1, v, 1); } catch (err) { 죽은것.push(`face.${이름}(${v})`); }
+    }
+  }
+  for (const [이름, e] of Object.entries(R.PART_EFFECTS || {})) {
+    for (const v of ["front", "angry", undefined]) {
+      try { e.fn(0.5, 1, v, 1); } catch (err) { 죽은것.push(`rig.${이름}(${v})`); }
+    }
+  }
+  if (죽은것.length) throw new Error(죽은것.slice(0, 4).join(", "));
+  return `부위 움직임 ${Object.keys(PART_EFFECTS).length}종 × 낯선 시점에도 안 죽음`;
+});
+
+
+await T("🎬 연출 화면이 모든 갈래를 그린다", async () => {
+  /* 코드로 그리는 재료(효과·소품·상태…)는 파일이 없어 목록도 없었다.
+     낱말을 하나 더 만들면 이 화면에도 저절로 나와야 한다 — 빠지면 아무도 모른다. */
+  const 방 = document.createElement("div");
+  방.innerHTML = await (await fetch("/p/views/char_fx.html")).text();
+  방.style.cssText = "position:fixed; left:-9999px; width:900px";
+  document.body.appendChild(방);
+  try {
+    const G = await import("/p/js/char/fx_gallery.js");
+    await G.mount(방);
+    const 갈래 = [...방.querySelectorAll("#fxKinds [data-갈래]")].map(b => b.dataset.갈래);
+    if (갈래.length < 10) throw new Error(`갈래가 ${갈래.length}개뿐`);
+    const 빈갈래 = [];
+    for (const g of 갈래) {
+      방.querySelector(`#fxKinds [data-갈래="${g}"]`).click();
+      await new Promise(r => setTimeout(r, 30));
+      if (!방.querySelectorAll("#fxBody canvas").length) 빈갈래.push(g);
+    }
+    if (빈갈래.length) throw new Error("빈 갈래: " + 빈갈래.join(", "));
+    /* 낱말 수가 코드와 맞는가 — 하나라도 빠지면 여기서 걸린다 */
+    const { EFFECTS } = await import("/p/js/story/fx.js");
+    방.querySelector('#fxKinds [data-갈래="효과"]').click();
+    await new Promise(r => setTimeout(r, 30));
+    eq(방.querySelectorAll("#fxBody canvas").length, Object.keys(EFFECTS).length, "효과 칸 수");
+    return `${갈래.length}갈래가 다 그려짐`;
+  } finally { 방.remove(); }
+});
+
+/* ── 🎨 보기 점검 ──
+   눈으로는 잘 못 잡는 것들이다. 실제로 이런 일이 있었다.
+     · 한 줄에 단추(47px)·작은 단추(35px)·입력칸(46px)이 섞여 줄이 울퉁불퉁했다
+     · 체크박스가 브라우저 기본 13px 이라 누르기 힘들었다
+     · 고른 하위 탭의 개수 글씨가 보라 바탕 위 은회색이라 2.4:1 로 거의 안 보였다
+   화면을 통째로 띄워 재는 것은 무거우므로, **규칙이 지켜지는지**를 CSS 로 확인한다. */
+/* 이 점검은 **본 화면의 CSS 를 그대로** 써야 뜻이 있다.
+   여기는 딴 쪽(_check.html)이라 index.html 의 <style> 을 통째로 실어 온다. */
+{
+  const html = await (await fetch("/p/index.html")).text();
+  const 스타일 = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(m => m[1]).join("\n");
+  const el = document.createElement("style");
+  el.textContent = 스타일;
+  document.head.appendChild(el);
+}
+
+await T("한 줄에 놓인 것들은 키가 같다", async () => {
+  const 방 = document.createElement("div");
+  방.className = "charRow";
+  방.style.cssText = "position:fixed; left:-9999px; top:0; width:600px";
+  방.innerHTML = `<button>보통 단추</button><button class="ghost small">작은 단추</button>
+    <input placeholder="입력"><select><option>고르기</option></select>`;
+  document.body.appendChild(방);
+  try {
+    const 높이 = [...방.children].map(e => Math.round(e.getBoundingClientRect().height));
+    const 가짓수 = [...new Set(높이)];
+    if (가짓수.length > 1) throw new Error(`높이가 제각각: ${높이.join(", ")}`);
+    if (가짓수[0] < 34) throw new Error(`너무 낮음: ${가짓수[0]}px`);
+    return `단추·입력칸·고르기 모두 ${가짓수[0]}px`;
+  } finally { 방.remove(); }
+});
+
+await T("체크박스가 누를 만큼 크다", async () => {
+  const 방 = document.createElement("div");
+  방.style.cssText = "position:fixed; left:-9999px; top:0";
+  방.innerHTML = `<input type="checkbox">`;
+  document.body.appendChild(방);
+  try {
+    const h = Math.round(방.firstElementChild.getBoundingClientRect().height);
+    if (h < 16) throw new Error(`${h}px — 브라우저 기본(13px)에 가깝다`);
+    return `${h}px`;
+  } finally { 방.remove(); }
+});
+
+await T("글씨가 바탕과 충분히 다르다", async () => {
+  /* 반투명 바탕은 뒤엣것과 섞어야 진짜 색이 나온다 —
+     안 그러면 rgba(255,255,255,0.05) 를 흰색으로 보고 죄다 '나쁨' 이 된다. */
+  const 뜯기 = c => { const m = (String(c).match(/[\d.]+/g) || [0, 0, 0]).map(Number);
+    return { r: m[0] || 0, g: m[1] || 0, b: m[2] || 0, a: m.length > 3 ? m[3] : 1 }; };
+  const 밝기 = ({ r, g, b }) => { const f = x => { x = x / 255;
+    return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const 방 = document.createElement("div");
+  방.style.cssText = "position:fixed; left:-9999px; top:0; width:700px; background:#0d0c12";
+  방.innerHTML = `<h3 class="mkHead">소제목</h3>
+    <div class="hint">흐린 안내글</div>
+    <div class="subtabs"><button class="subtab on">고른 탭 <span class="hint">12</span></button></div>
+    <div class="vitem"><span class="vinfo">작은 곁글</span></div>
+    <span class="qm">?</span>`;
+  document.body.appendChild(방);
+  try {
+    const 나쁜것 = [];
+    방.querySelectorAll("*").forEach(el => {
+      if (![...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) return;
+      const cs = getComputedStyle(el);
+      const 쌓기 = []; let p = el;
+      while (p && p !== document.documentElement) {
+        const c = 뜯기(getComputedStyle(p).backgroundColor);
+        if (c.a > 0) 쌓기.push(c);
+        if (c.a >= 1) break;
+        p = p.parentElement;
+      }
+      let bg = { r: 13, g: 12, b: 18 };
+      for (let i = 쌓기.length - 1; i >= 0; i--) { const c = 쌓기[i];
+        bg = { r: c.r * c.a + bg.r * (1 - c.a), g: c.g * c.a + bg.g * (1 - c.a),
+               b: c.b * c.a + bg.b * (1 - c.a) }; }
+      const a = 밝기(뜯기(cs.color)), b = 밝기(bg);
+      const 비 = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      const 큼 = parseFloat(cs.fontSize) >= 18.66 ||
+                 (parseFloat(cs.fontSize) >= 14 && +cs.fontWeight >= 700);
+      if (비 < (큼 ? 3 : 4.5))
+        나쁜것.push(`${el.className || el.tagName} ${비.toFixed(1)}:1`);
+    });
+    if (나쁜것.length) throw new Error(나쁜것.join(", "));
+    return "소제목·안내글·고른 탭·곁글·물음표 모두 4.5:1 넘음";
+  } finally { 방.remove(); }
+});
+
+lines.push("\n── 🚦 굽기 전 점검 ──"); out.textContent = lines.join("\n");
+
+const PRE = await import("/p/js/story/preflight.js");
+const LINT2=null;
+const 살펴 = async 글 => {
+  const doc = new StoryDoc(글);
+  await doc.build(library);
+  return PRE.preflight(doc);
+};
+const 배경1 = library.backgrounds[0]?.name || "들판";
+
+await T("멀쩡한 대본에는 아무 말도 안 한다", async () => {
+  const 음악 = (await LINT.음악읽기())[0];
+  const 탈 = await 살펴(`${음악 ? "음악: " + 음악 + "\n" : ""}자막차림표: 유튜브\n\n` +
+                        `장면 <${배경1}>\n  자막 "안녕하세요" 2초`);
+  if (탈.length) throw new Error("멀쩡한데 잡음: " + 탈.map(x => x.글).join(" / "));
+  return "조용함";
+});
+
+await T("없는 음악을 시키면 '소리 없이 구워진다' 고 알려 준다", async () => {
+  const 탈 = await 살펴(`음악: 이런곡은없어요XYZ\n\n장면 <${배경1}>\n  자막 "가" 2초`);
+  const x = 탈.find(t => /음악/.test(t.글));
+  if (!x) throw new Error("조용히 넘어감 — 소리 없이 구워집니다");
+  eq(x.등급, "놓침", "등급");
+  return x.글.slice(0, 46);
+});
+
+await T("이름이 잘린 음악은 원래 이름을 짚어 준다", async () => {
+  const 음악들 = await LINT.음악읽기();
+  const 띄어쓴것 = 음악들.find(n => /\s/.test(n));
+  if (!띄어쓴것) return "띄어쓴 음악 이름이 없어 건너뜀";
+  const 잘린것 = 띄어쓴것.split(/\s+/)[0];
+  const 탈 = await 살펴(`음악: ${잘린것}\n\n장면 <${배경1}>\n  자막 "가" 2초`);
+  const x = 탈.find(t => /음악/.test(t.글));
+  if (!x) throw new Error("조용히 넘어감");
+  if (!x.글.includes(띄어쓴것)) throw new Error(`"${띄어쓴것}" 을 안 짚어 줌: ${x.글}`);
+  return `"${잘린것}" → "${띄어쓴것}"`;
+});
+
+await T("없는 자막 차림표·글꼴을 짚어 준다", async () => {
+  const 탈 = await 살펴(`자막차림표: 유튜부\n자막글꼴: 손글시\n\n장면 <${배경1}>\n  자막 "가" 2초`);
+  const 차 = 탈.find(t => /차림표/.test(t.글));
+  const 글 = 탈.find(t => /글꼴/.test(t.글));
+  if (!차 || !글) throw new Error("조용히 기본값으로 구워짐");
+  if (!차.글.includes("유튜브")) throw new Error("차림표 제안이 틀림: " + 차.글);
+  if (!글.글.includes("손글씨")) throw new Error("글꼴 제안이 틀림: " + 글.글);
+  return "둘 다 짚음";
+});
+
+await T("자막이 하나도 없으면 굽기를 막는다", async () => {
+  const 탈 = await 살펴(`장면 <${배경1}>\n  카메라 줌인 2초`);
+  if (!PRE.막힘(탈)) throw new Error("막지 않음 — 읽을 것 없는 영상이 나옵니다");
+  return 탈[0].글;
+});
+
+await T("읽기에 너무 빠른 자막을 알려 준다", async () => {
+  const 탈 = await 살펴(`장면 <${배경1}>\n` +
+                        `  자막 "아주 긴 문장을 짧은 시간에 보여 주면 도저히 못 읽습니다" 1초`);
+  if (!탈.some(t => /빠릅/.test(t.글))) throw new Error("조용히 넘어감");
+  return "잡음";
+});
+
+await T("굽기 전 점검이 느리지 않다 (편당)", async () => {
+  const 글 = `자막차림표: 유튜브\n\n장면 <${배경1}>\n` +
+             Array.from({ length: 40 }, (_, i) => `  자막 "${i}번째 줄입니다" 1.5초`).join("\n");
+  const doc = new StoryDoc(글);
+  await doc.build(library);
+  const t0 = performance.now();
+  await PRE.preflight(doc);
+  const 걸림 = performance.now() - t0;
+  if (걸림 > 400) throw new Error(`${걸림.toFixed(0)}ms — 너무 느림`);
+  return `자막 40줄에 ${걸림.toFixed(0)}ms`;
+});
+
+await T("컷 시트를 서버가 만들어 준다", async () => {
+  const d = await (await fetch("/api/videos")).json();
+  const v = (d.videos || []).find(x => /\.mp4$/i.test(x.filename) && (x.duration || 0) > 0)
+         || (d.videos || [])[0];
+  if (!v) return "영상 없음 — 건너뜀";
+  const r = await fetch(`/api/videos/sheet?filename=${encodeURIComponent(v.filename)}&n=4&w=160`);
+  if (!r.ok) throw new Error(`${r.status} — 못 만듦`);
+  const t = r.headers.get("Content-Type") || "";
+  if (!/image/.test(t)) throw new Error("그림이 아님: " + t);
+  const b = await r.blob();
+  return `${v.filename} → ${t} ${(b.size / 1024).toFixed(0)}KB`;
+});
+
+lines.push("\n── 📁 프로젝트 글 한 덩어리 ──"); out.textContent = lines.join("\n");
+
+const PJ = await import("/p/js/story/project.js");
+
+await T("띄어쓴 음악 이름이 안 잘린다", () => {
+  const r = PJ.parseProject("프로젝트: 시험\n음악: 산책 배경음   소리크기:0.6  여닫이:1.2초\n\n" +
+                            '== 이야기 1화\n장면 <들판>\n  자막 "가"');
+  eq(r.설정.음악.파일, "산책 배경음", "음악 이름");
+  eq(r.설정.음악.소리크기, 0.6, "소리크기");
+  eq(r.설정.음악.여닫이, 1.2, "여닫이");
+  return `"${r.설정.음악.파일}" · ${r.설정.음악.소리크기} · ${r.설정.음악.여닫이}초`;
+});
+
+await T("프로젝트 첫머리의 자막 설정이 편마다 내려간다", () => {
+  const r = PJ.parseProject("프로젝트: 시험\n자막차림표: 유튜브\n자막글꼴: 또박\n\n" +
+                            '== 이야기 1화\n장면 <들판>\n  자막 "가"\n\n' +
+                            '== 이야기 2화\n장면 <바다>\n  자막 "나"');
+  eq(r.이야기.length, 2, "편 수");
+  for (const s of r.이야기) {
+    if (!/자막차림표:\s*유튜브/.test(s.글)) throw new Error(`"${s.이름}" 에 차림표가 안 내려감`);
+    if (!/자막글꼴:\s*또박/.test(s.글)) throw new Error(`"${s.이름}" 에 글꼴이 안 내려감`);
+  }
+  // 내려간 설정이 실제로 무대에 먹히는가
+  const o = new Stage(parseScript(r.이야기[0].글), {}).subtitleDefaults();
+  eq(o.바탕, SUB.PRESETS["유튜브"].값.바탕, "무대가 읽은 바탕");
+  eq(o.글꼴, "또박", "무대가 읽은 글꼴");
+  return `2편 모두 · 무대에서 ${o.글꼴}·${o.바탕}`;
+});
+
+await T("자막 설정을 안 적으면 편에 아무것도 안 붙는다", () => {
+  const r = PJ.parseProject("프로젝트: 시험\n비율: 9:16\n\n" +
+                            '== 이야기 1화\n장면 <들판>\n  자막 "가"');
+  if (/^자막/m.test(r.이야기[0].글)) throw new Error("안 적었는데 붙임");
+  return "그대로";
+});
+
+lines.push("\n── 🧱 튼튼한가 ──"); out.textContent = lines.join("\n");
+
+await T("아이디 없이 프로젝트를 물어도 서버가 안 터진다", async () => {
+  const r = await fetch("/api/project/get");
+  if (r.status >= 500) throw new Error(`${r.status} — 서버가 터짐`);
+  eq(r.status, 404, "코드");
+  return "404 로 돌려줌";
+});
+await T("이야기 아이디 없이 물어도 안 터진다", async () => {
+  const r = await fetch("/api/project/story");
+  if (r.status >= 500) throw new Error(`${r.status} — 서버가 터짐`);
+  return r.status + " 로 돌려줌";
+});
+await T("파일 없이 올리기를 불러도 뜻이 있는 답을 준다", async () => {
+  const r = await fetch("/api/upload_image", { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: "{}" });
+  if (r.status >= 500) throw new Error(`${r.status} — 서버가 터짐`);
+  const d = await r.json();
+  if (!d.error) throw new Error("까닭을 안 알려 줌");
+  return `${r.status} · "${d.error}"`;
+});
+await T("폴더 밖 파일을 달라고 하면 막는다", async () => {
+  const r = await fetch("/api/videos/download?filename=" + encodeURIComponent("../server.py"));
+  if (r.ok) throw new Error("뚫림 — 위험");
+  return r.status + " 로 막음";
+});
+
+await T("탭끼리 주고받는 창구가 다 살아 있다", async () => {
+  // 이 점검 화면은 앱 밖에서도 열리므로, 탭이 없으면 볼 것이 없다
+  if (!window.ensureTab) return "앱 안이 아님 — 건너뜀 (앱에서 열면 검사합니다)";
+  // 스튜디오를 새로 만들며 window.StudioTab 이 사라져 '리메이크' 가 죽어 있었다
+  await window.ensureTab("studioTab");
+  for (let i = 0; i < 20 && !window.StudioTab; i++) await new Promise(r => setTimeout(r, 120));
+  const 있어야할것 = { StudioTab: ["setSettings", "setStatus"], Particles: ["burst", "setMode"] };
+  const 빠진것 = [];
+  for (const [이름, 열쇠들] of Object.entries(있어야할것)) {
+    const o = window[이름];
+    if (!o) { 빠진것.push(이름); continue; }
+    열쇠들.forEach(k => { if (typeof o[k] !== "function") 빠진것.push(`${이름}.${k}`); });
+  }
+  if (빠진것.length) throw new Error("끊김: " + 빠진것.join(", "));
+  return Object.keys(있어야할것).join(" · ");
+});
+
+await T("저장된 프로젝트에 겹친 이야기 아이디가 없다", async () => {
+  const d = await (await fetch("/api/project/list")).json();
+  const 탈 = [];
+  for (const p of d.items || []) {
+    const one = await (await fetch(`/api/project/get?id=${encodeURIComponent(p.id)}`)).json();
+    const sids = (one.item?.stories || []).map(s => s.sid);
+    if (new Set(sids).size !== sids.length) 탈.push(p.name);
+  }
+  if (탈.length) throw new Error("겹침: " + 탈.join(", "));
+  return `프로젝트 ${(d.items || []).length}개 모두 깨끗함`;
+});
+
+await T("저장된 프로젝트가 없는 영상을 가리키지 않는다", async () => {
+  const [pj, vd] = await Promise.all([
+    (await fetch("/api/project/list")).json(),
+    (await fetch("/api/videos")).json(),
+  ]);
+  const 있는것 = new Set((vd.videos || []).map(v => v.filename));
+  const 없는것 = [];
+  for (const p of pj.items || []) {
+    const one = await (await fetch(`/api/project/get?id=${encodeURIComponent(p.id)}`)).json();
+    const 쓰는것 = [...(one.item?.videos || [])];
+    (one.item?.stories || []).forEach(s => 쓰는것.push(...(s.videos || [])));
+    쓰는것.filter(v => !있는것.has(v)).forEach(v => 없는것.push(`${p.name}→${v}`));
+  }
+  if (없는것.length) return `⚠ 사라진 영상 ${없는것.length}개 (지운 영상을 아직 가리킴)`;
+  return "모두 있음";
+});
+
+/* ── ⬅ 뒤로가기 ──
+   길잡이(nav.js)가 브라우저 뒤로가기를 어떻게 받아 처리하는지 잰다.
+
+   진짜 history.back() 은 쓰지 않는다. 뒤로가 한 번이라도 넘치면 **이 검사 페이지를 떠나**
+   나머지가 통째로 안 돌아가기 때문이다 (실제로 그렇게 됐다).
+   대신 브라우저가 보내는 것과 **똑같은 신호**를 만들어 쏜다 —
+   nav.js 는 history.state 의 깊이만 보고 움직이므로 지나온 길이 완전히 같다.
+   (진짜 뒤로가기는 앱에서 손으로 확인했다: 작업실→프로젝트→단계→팝업 5층을 쌓고
+    네 번 눌러 정확히 거꾸로 돌아온다.) */
+{
+  const NAV = await import("/p/js/ui/nav.js");
+  const 쉬다 = ms => new Promise(r => setTimeout(r, ms));
+  /** 브라우저가 그 깊이로 물러난 척한다 */
+  const 뒤로 = async 깊이 => {
+    history.replaceState({ 공작소깊이: 깊이 }, "");
+    dispatchEvent(new PopStateEvent("popstate", { state: { 공작소깊이: 깊이 } }));
+    await 쉬다(40);
+  };
+
+  await T("뒤로가기가 걸음을 하나씩 되돌린다", async () => {
+    const 한일 = [], 시작 = NAV.깊이();
+    NAV.밀기("ㄱ", () => 한일.push("ㄱ"));
+    NAV.밀기("ㄴ", () => 한일.push("ㄴ"));
+    eq(NAV.깊이(), 시작 + 2, "쌓인 걸음");
+    await 뒤로(시작 + 1);
+    eq(한일.join(","), "ㄴ", "한 번 물러났을 때");
+    await 뒤로(시작);
+    eq(한일.join(","), "ㄴ,ㄱ", "두 번 물러났을 때");
+    eq(NAV.깊이(), 시작, "다 되돌린 뒤 깊이");
+    return "쌓은 차례의 거꾸로 되돌아감";
+  });
+
+  await T("뒤로를 여러 번 빨리 눌러도 한꺼번에 되돌아간다", async () => {
+    const 한일 = [], 시작 = NAV.깊이();
+    NAV.밀기("ㄱ", () => 한일.push("ㄱ"));
+    NAV.밀기("ㄴ", () => 한일.push("ㄴ"));
+    NAV.밀기("ㄷ", () => 한일.push("ㄷ"));
+    await 뒤로(시작);                      // 세 걸음을 한 번에 건너뛴 셈
+    eq(한일.join(","), "ㄷ,ㄴ,ㄱ", "되돌린 차례");
+    eq(NAV.깊이(), 시작, "깊이");
+    return "세 걸음이 한 번에 거꾸로 풀림";
+  });
+
+  await T("앞으로 가기는 건드리지 않는다", async () => {
+    const 한일 = [], 시작 = NAV.깊이();
+    NAV.밀기("ㄱ", () => 한일.push("ㄱ"));
+    await 뒤로(시작 + 5);                  // 우리가 모르는 자리 (앞으로 가기 등)
+    eq(한일.length, 0, "되돌린 횟수");
+    eq(NAV.깊이(), 시작 + 1, "깊이 그대로");
+    await 뒤로(시작);                      // 뒷정리
+    return "모르는 자리에서는 가만히 있음";
+  });
+
+  await T("팝업이 뒤로가기로 닫힌다", async () => {
+    const M = await import("/p/js/ui/modal.js");
+    const 시작 = NAV.깊이();
+    M.openModal({ 제목: "가", 내용: "가" });
+    M.openModal({ 제목: "나", 내용: "나" });         // 겹쳐 열기 — 걸음은 하나여야 한다
+    eq(NAV.깊이(), 시작 + 1, "겹쳐 열었을 때 깊이");
+    await 뒤로(시작);
+    if (document.querySelector(".uiModal")) throw new Error("뒤로가기로 안 닫힘");
+    eq(NAV.깊이(), 시작, "닫은 뒤 깊이");
+    return "겹쳐 열어도 뒤로 한 번이면 닫힘";
+  });
+
+  await T("스스로 닫으면 걸음도 함께 빠진다", async () => {
+    const 시작 = NAV.깊이();
+    let 불림 = 0;
+    NAV.밀기("ㄷ", () => 불림++);
+    if (!NAV.있나("ㄷ")) throw new Error("걸음이 안 쌓임");
+    NAV.빼기("ㄷ");
+    eq(NAV.깊이(), 시작, "깊이");
+    eq(불림, 0, "되돌리기가 불린 횟수");     // 스스로 닫았으니 다시 닫으면 안 된다
+    if (NAV.있나("ㄷ")) throw new Error("걸음이 안 빠짐");
+    await 쉬다(150);                       // 뒤따라오는 popstate 를 흘려 보낸다
+    return "히스토리와 걸음이 함께 물러남";
+  });
+}
+
+lines.push(`\n━━━━━━━━━━━━━━━━━━\n결과: 통과 ${pass} · 실패 ${fail}`);
+out.textContent = lines.join("\n");
+await fetch("/api/frames/start", { method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ name: "_check_dummy", fps: 1 }) }).catch(() => {});
+document.title = fail ? `점검 실패 ${fail}` : "점검 통과";
+window.__checkResult = { pass, fail, lines };
+</script>

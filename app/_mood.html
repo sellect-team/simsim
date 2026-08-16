@@ -1,0 +1,28 @@
+<!doctype html><meta charset="utf-8"><title>분위기 시험</title>
+<body style="background:#181820;color:#eee;font-family:system-ui;padding:14px">
+<div id="log"></div><div id="out" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+<script type="module">
+import { StoryDoc } from "/p/js/story/doc.js";
+import { library } from "/p/js/story/assets.js";
+import { MOODS } from "/p/js/story/post.js";
+await library.refresh(true);
+const 개 = library.characters.find(c => c.name.includes("우리집"))?.name || "누렁이 강아지";
+const W=126,H=224, out=document.getElementById("out");
+let 총=0;
+for (const n of Object.keys(MOODS)) {
+  const doc = new StoryDoc(`장면 밤바다 분위기:${n}\n  ${개} 등장 가운데 크기:0.62\n  자막 "분위기 ${n}"`, n);
+  await doc.build(library);
+  const wrap=document.createElement("div");
+  const c=document.createElement("canvas"); c.width=W; c.height=H; c.style.borderRadius="6px";
+  const t0=performance.now();
+  doc.stage.drawAt(c.getContext("2d"), {x:0,y:0,w:W,h:H}, 1.0);
+  총+=performance.now()-t0;
+  wrap.appendChild(c);
+  const lab=document.createElement("div");
+  lab.style.cssText="font-size:11px;width:"+W+"px;margin-top:2px";
+  lab.textContent = n + " — " + MOODS[n].ko;
+  wrap.appendChild(lab); out.appendChild(wrap);
+}
+document.getElementById("log").textContent = `${Object.keys(MOODS).length}가지 · 합계 ${총.toFixed(0)}ms`;
+document.title="그림 완료";
+</script>

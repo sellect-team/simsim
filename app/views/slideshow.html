@@ -1,0 +1,69 @@
+<div class="card">
+    <h2>🎞 슬라이드쇼 — 이미지 + 단순 효과 + 전환 (AI 변형 없음, 몇 초 만에 완성)</h2>
+    <div class="hint" style="margin-bottom:10px">그림이 절대 변형되지 않습니다. 이미지에 줌·팬 같은 카메라 효과와 장면 전환만 입혀 영상을 만듭니다. 웹툰·일러스트에 최적.</div>
+    <input type="file" id="slideFiles" accept="image/*" multiple style="display:none">
+    <div class="row" style="margin-top:0; align-items:center">
+      <label style="display:flex; align-items:center; gap:7px; margin:0; cursor:pointer; flex:1.3">
+        <input type="checkbox" id="slideGpu" style="width:auto">
+        <b>🎮 GPU 미세 모션</b><span class="hint">— 장당 2~4분</span>
+      </label>
+      <span class="hint" style="flex:1.3">✨ 업로드 시 자동 선명화 + 해상도 통일 (1408px)</span>
+      <label style="display:flex; align-items:center; gap:7px; margin:0; cursor:pointer; flex:1" title="움직인 부분(캐릭터)만 남기고 배경은 원본 픽셀 그대로 고정합니다">
+        <input type="checkbox" id="slideLockBg" style="width:auto">
+        <b>🖼 배경 고정</b><span class="hint">— 실험적</span>
+      </label>
+      <button class="ghost small" id="genOptsBtn" type="button" style="flex:0.8">⚙ 고급 생성 설정</button>
+      <div style="flex:1"><label style="margin-top:0">화면 크기</label><select id="slideSize">
+        <option value="1920x1080">1920×1080 — 유튜브 가로 (FHD)</option>
+        <option value="1280x720" selected>1280×720 — 유튜브 가로 (HD)</option>
+        <option value="1080x1920">1080×1920 — 유튜브 쇼츠·릴스 (세로 FHD)</option>
+        <option value="720x1280">720×1280 — 쇼츠·릴스 (세로 HD)</option>
+        <option value="1080x1080">1080×1080 — 인스타 정사각</option>
+        <option value="854x480">854×480 — 저용량 (가로)</option>
+      </select></div>
+      <div style="flex:1"><label style="margin-top:0">이미지 배치</label><select id="slideFit">
+        <option value="fit" selected>화면 크기에 맞추기 (전체 보임·여백)</option>
+        <option value="crop">화면에 꽉 차게 자르기</option>
+      </select></div>
+    </div>
+    <div id="slideList" style="display:flex; flex-direction:column; gap:6px; margin-top:10px"></div>
+    <div class="row">
+      <button class="ghost" id="slideAddBtn" type="button">➕ 이미지 추가 (여러 장 가능)</button>
+    </div>
+    <details style="margin-top:12px">
+      <summary>🎵 배경 음악 (선택 — 만들기 시 자동으로 입혀집니다)</summary>
+      <div class="row" style="margin-top:8px">
+        <button class="ghost" id="sMusicPick" type="button">🎵 음악 파일 선택 (mp3/wav)</button>
+        <span class="hint" id="sMusicInfo" style="flex:2; align-self:center"></span>
+        <button class="danger small" id="sMusicClear" type="button" style="flex:0.4; display:none">제거</button>
+      </div>
+      <input type="file" id="sMusicFile" accept="audio/*" style="display:none">
+      <audio id="sMusicAudio" controls style="display:none; width:100%; margin-top:8px"></audio>
+      <div class="grid" style="margin:10px 0 8px">
+        <div><label>길이 모드</label><select id="sMusicMode">
+          <option value="video" selected>영상 길이에 맞춰 노래 자르기</option>
+          <option value="loop_video">노래가 끝날 때까지 영상 반복</option>
+        </select></div>
+        <div><label>노래 구간</label><select id="sMusicRange">
+          <option value="full" selected>전체 사용</option>
+          <option value="part">특정 구간 선택</option>
+        </select></div>
+      </div>
+      <div id="sMusicPartWrap" style="display:none; border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px">
+        <label style="margin-top:0">구간 선택: <b id="sMusicRangeLabel" style="color:var(--accent)">0:00 ~ 0:00</b></label>
+        <label style="font-size:11px">시작 지점</label>
+        <input id="sMusicStart" type="range" min="0" max="100" value="0" step="1" style="padding:0">
+        <label style="font-size:11px">끝 지점</label>
+        <input id="sMusicEnd" type="range" min="0" max="100" value="100" step="1" style="padding:0">
+        <div class="row" style="margin-top:8px">
+          <button class="ghost small" id="sMusicPreviewBtn" type="button">▶ 선택 구간 미리듣기</button>
+          <button class="ghost small" id="sMusicStopBtn" type="button" style="flex:0.4">⏹ 정지</button>
+        </div>
+      </div>
+    </details>
+    <div class="row">
+      <button id="slideMakeBtn">🎬 슬라이드쇼 만들기</button>
+    </div>
+    <div id="slideStatus" class="hint" style="text-align:center; min-height:18px; margin-top:8px"></div>
+    <video id="slidePlayer" controls loop style="margin-top:10px"></video>
+  </div>

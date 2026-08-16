@@ -1,0 +1,52 @@
+<!doctype html><meta charset="utf-8"><title>콘티 → 영상</title>
+<body style="background:#181820;color:#eee;font-family:system-ui;padding:16px">
+<div id="log" style="white-space:pre-wrap;line-height:1.7">시작</div>
+<script type="module">
+import { StoryDoc } from "/p/js/story/doc.js";
+import { library } from "/p/js/story/assets.js";
+import { bakeVideo, waitJob } from "/p/js/story/render.js";
+const el = document.getElementById("log");
+const say = m => { el.textContent += "\n" + m; };
+try { const f = new FontFace("Gaegu", 'url("/p/fonts/Gaegu-Bold.ttf")'); await f.load(); document.fonts.add(f); } catch {}
+await library.refresh(true);
+
+/* 배경이 바뀔 때마다 장면을 나눈 대본 —
+   같은 배경에서 이어지는 칸은 한 장면 안에 자막을 여러 줄 넣는다 */
+const 대본 = `제목: 누룽이 출근길 체험
+비율: 9:16
+분위기: 아침
+음악프롬프트: gentle piano, warm and slightly sad, 80bpm, instrumental
+
+장면 <현관>
+  자막 "아침, 오늘은 더 놀아줄까?"   등장:타이핑
+  자막 "또 금방 가네…"   소리:톡
+
+장면 <방>   전환:페이드
+  자막 "왜 나랑 아침이랑 저녁에만 놀아주지?"
+  자막 "그럼… 내가 한 번 인간이 되어볼까?"   효과:반짝임
+
+장면 <지하철>   전환:밀기   분위기:차가움
+  자막 "출근… 벌써 힘든데?"   소리:쿵
+
+장면 <사무실>   전환:페이드   분위기:흐림
+  자막 "계속 일해야 해…"
+  자막 "그래도 일해서 돈 벌어야지. 누룽이 맛있는 것도 사줘야지."
+
+장면 <밤 거실>   전환:어둡게   분위기:밤
+  자막 "안 놀아준 게 아니었구나"   효과:하트
+  자막 "아침과 저녁은, 누룽에게 돌아가기 위해 남겨둔 시간이었어."
+`;
+const doc = new StoryDoc(대본, "누룽이 출근길 체험");
+await doc.build(library);
+say(`${doc.sceneCount}장면 · ${doc.seconds.toFixed(1)}초 · 오류 ${doc.errors.length}`);
+if (doc.errors.length) say(doc.errors.map(e => `${e.line}줄: ${e.msg}`).join("\n"));
+const 쓰는것 = doc.needs();
+say(`배경: ${쓰는것.배경.join(", ")}`);
+say(`부족: ${doc.missingWithPrompts().length}개`);
+
+const r = await bakeVideo(doc.stage, { 이름: "누룽이 출근길", 긴변: 1280, fps: 30 },
+  p => { el.textContent = el.textContent.replace(/\n굽는 중.*$/, "") + `\n굽는 중 ${p.percent}%`; });
+const done = await waitJob(r.job);
+say(done.state === "done" ? `✅ ${done.filename} (${(done.size/1048576).toFixed(2)}MB)` : `❌ ${done.error}`);
+document.title = done.state === "done" ? "완성" : "실패";
+</script>

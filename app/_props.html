@@ -1,0 +1,45 @@
+<!doctype html><meta charset="utf-8"><title>소품 시험</title>
+<body style="background:#181820;color:#eee;font-family:system-ui;padding:14px">
+<div id="log"></div><div id="out"></div>
+<script type="module">
+import { StoryDoc } from "/p/js/story/doc.js";
+import { library } from "/p/js/story/assets.js";
+import { PROPS } from "/p/js/story/props.js";
+await library.refresh(true);
+const 개 = library.characters.find(c => c.name.includes("우리집"))?.name || "누렁이 강아지";
+const out = document.getElementById("out");
+const W=118,H=210;
+// ① 소품 16종
+const 종류 = Object.keys(PROPS);
+const 글1 = `장면 <공원 잔디밭>\n` + 종류.map((n,i)=>
+  `  소품 <${n}>\n  <${n}> 등장 ${(0.08+i*0.058).toFixed(2)},0.5 크기:0.9`).join("\n") + `\n  대기 1초`;
+const d1 = new StoryDoc(글1,"소품"); await d1.build(library);
+const c1=document.createElement("canvas"); c1.width=760; c1.height=180;
+d1.stage.drawAt(c1.getContext("2d"), {x:0,y:0,w:760,h:180}, 0.5);
+const r1=document.createElement("div"); r1.style.margin="6px 0";
+r1.innerHTML='<div style="font-size:13px;margin-bottom:3px">소품 '+종류.length+'종 — '+종류.join(" · ")+'</div>';
+r1.appendChild(c1); out.appendChild(r1);
+// ② 붙이기
+const 글2 = `장면 <공원 잔디밭>
+  <${개}> 등장 왼쪽 크기:0.7
+  소품 <공>
+  <공> 등장 오른쪽끝 크기:0.9
+  <공> 붙이기 <${개}> 손
+  <${개}> 이동 오른쪽끝 2초
+  자막 "들고 갑니다"
+  <공> 떼기
+  <${개}> 이동 왼쪽 1.6초
+  자막 "놓고 왔어요"`;
+const d2 = new StoryDoc(글2,"붙이기"); await d2.build(library);
+const r2=document.createElement("div"); r2.style.cssText="display:flex;gap:3px;align-items:center;margin:8px 0";
+const l2=document.createElement("div"); l2.style.cssText="width:150px;font-size:13px";
+l2.textContent="붙이기 → 떼기"; r2.appendChild(l2);
+for (const t of [0.2,0.9,1.8,2.6,3.4,4.4]) {
+  const c=document.createElement("canvas"); c.width=W; c.height=H; c.style.borderRadius="4px";
+  d2.stage.drawAt(c.getContext("2d"), {x:0,y:0,w:W,h:H}, t);
+  r2.appendChild(c);
+}
+out.appendChild(r2);
+document.getElementById("log").textContent = `소품 ${종류.length}종 · 붙이기 6컷 · 오류 ${d1.errors.length+d2.errors.length}`;
+document.title="그림 완료";
+</script>
