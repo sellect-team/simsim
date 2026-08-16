@@ -1,0 +1,89 @@
+{
+ "id": "sc_19fee94fb2d",
+ "name": "골목 인사",
+ "tags": [
+  "인사",
+  "골목"
+ ],
+ "created": 1786414168.8805664,
+ "seconds": 3.0,
+ "cast": [
+  "우리집 강아지"
+ ],
+ "data": {
+  "name": "골목 인사",
+  "seconds": 3,
+  "camera": "none",
+  "caption": {
+   "text": "",
+   "pos": "bottom",
+   "size": 0.055,
+   "box": true,
+   "fade": true
+  },
+  "acts": {
+   "a1": {
+    "visible": true,
+    "motion": "wobble",
+    "speed": 1,
+    "pos": 0.5,
+    "path": {
+     "on": false,
+     "x1": 0.15,
+     "y1": 0.78,
+     "x2": 0.85,
+     "y2": 0.78,
+     "ease": "easeInOut"
+    },
+    "startName": "",
+    "endName": "",
+    "startState": null,
+    "endState": null,
+    "changeAt": 0,
+    "changeDur": 1
+   }
+  },
+  "bubbles": [
+   {
+    "actorId": "a1",
+    "text": "여기야!",
+    "pos": "topRight",
+    "style": "speech",
+    "font": "system-ui",
+    "size": 0.045,
+    "bold": true,
+    "color": "#2b2119",
+    "bg": "#ffffff",
+    "border": "#2b2119",
+    "maxWidth": 0.34,
+    "pad": 0.4,
+    "offsetX": 0,
+    "offsetY": 0,
+    "autoFlip": true,
+    "appearAt": 0,
+    "duration": 0,
+    "fade": true
+   }
+  ],
+  "tags": [
+   "인사",
+   "골목"
+  ]
+ },
+ "castData": [
+  {
+   "id": "a1",
+   "type": "sprite",
+   "charId": "ch_19febfc1ccb",
+   "name": "우리집 강아지",
+   "scale": 1,
+   "floor": 0.78,
+   "shadow": 0.35,
+   "z": 0,
+   "sideFacing": "left",
+   "autoFace": true,
+   "headMotion": true,
+   "headRatio": 0.46
+  }
+ ]
+}

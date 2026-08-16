@@ -1,0 +1,15 @@
+{
+ "id": "ch_19ffb2d88fa",
+ "name": "비몽_상승",
+ "created": 1786625493.2463076,
+ "poses": {
+  "front": "front.png"
+ },
+ "출처": "올림",
+ "group": "gp_19ffb04d2ee",
+ "tags": [
+  "구름",
+  "비몽",
+  "상승"
+ ]
+}

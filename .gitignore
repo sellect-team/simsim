@@ -23,15 +23,15 @@ app/thumbs/                   # 미리보기 그림 (자동 생성)
 app/trans_previews/
 app/sheets/                   # 컷 시트 (자동 생성)
 
+# ══ 함께 쓰는 작업물 ══
+#   캐릭터·배경·프로젝트는 **같이 고치는 사람도 같은 것으로** 작업해야 해서 올린다.
+#   (대본이 이름으로 부르기 때문에, 없으면 코드 그림이 나와 결과가 달라진다)
+#   app/characters   app/backgrounds   app/projects   app/groups
+#   app/prefabs      app/scenes        ← 위 것들과 짝이라 함께 올린다
+
 # ══ 개인 작업물 — 사람마다 다르다 ══
-app/characters/               # 올린 캐릭터 그림
-app/backgrounds/              # 올린 배경 그림
-app/audio/                    # 올린 음악
-app/music_projects/
-app/projects/                 # 만든 프로젝트·대본
-app/groups/
-app/scenes/
-app/prefabs/
+app/audio/                    # 올린 음악 (Suno 등에서 뽑은 것 — 라이선스가 저마다 다르다)
+app/music_projects/           # 뮤직비주얼 작업물
 app/shapes/
 
 # ══ 비밀 ══

@@ -1,0 +1,34 @@
+{
+ "id": "ch_19ffb2d8736",
+ "name": "비몽",
+ "created": 1786625492.8167133,
+ "poses": {
+  "dash": "dash.png",
+  "front": "front.png",
+  "happy": "happy.png",
+  "nap": "nap.png",
+  "surprise": "surprise.png",
+  "flip": "flip.png",
+  "back": "back.png",
+  "slide": "slide.png",
+  "up": "up.png",
+  "sleep": "sleep.png",
+  "stretch": "stretch.png",
+  "sad": "sad.png",
+  "right": "right.png",
+  "curl": "curl.png",
+  "spin": "spin.png",
+  "left": "left.png",
+  "small": "small.png",
+  "down": "down.png",
+  "angry": "angry.png",
+  "big": "big.png",
+  "big2": "big2.png"
+ },
+ "출처": "올림",
+ "group": "gp_19ffb04d2ee",
+ "tags": [
+  "구름",
+  "비몽"
+ ]
+}
