@@ -298,12 +298,17 @@ export async function lintScript(parsed, opt = {}) {
     }
   }
 
-  /* ⑤ 아무 자막도 없으면 0초짜리가 된다 — 굽기 전에 알아야 한다 */
-  const 컷수 = (parsed.scenes || []).reduce(
-    (a, s) => a + (s.steps || []).filter(x => x.kind === "자막" || x.kind === "대사").length, 0);
-  if ((parsed.scenes || []).length && !컷수) {
+  /* ⑤ 시간을 미는 것이 하나도 없으면 0초짜리가 된다.
+     미는 것은 자막·대사만이 아니다 — `대기`·`멈칫` 도 시간을 민다.
+     **배경 영상**(자막 없이 카메라만 도는 것)은 대기로만 길이를 채우는 정당한 쓰임이라,
+     자막이 없다는 이유로 막으면 안 된다. 그래서 '시간을 미는 것' 전체를 센다. */
+  const 미는것 = new Set(["자막", "대사", "대기", "멈칫"]);
+  const 시간든것 = (parsed.scenes || []).reduce(
+    (a, s) => a + (s.steps || []).filter(x => 미는것.has(x.kind)).length, 0);
+  if ((parsed.scenes || []).length && !시간든것) {
     나온것.push({ line: 1, 등급: "경고",
-      msg: "자막(또는 대사)이 하나도 없어 길이가 0초입니다 — 영상이 안 나옵니다.", 고침: null });
+      msg: "시간을 미는 것이 하나도 없어 길이가 0초입니다 — " +
+           "`자막`·`대사`·`대기`·`멈칫` 가운데 하나는 있어야 합니다.", 고침: null });
   }
 
   나온것.sort((a, b) => (a.line || 0) - (b.line || 0));

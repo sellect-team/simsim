@@ -1654,10 +1654,28 @@ await T("없는 자막 차림표·글꼴을 짚어 준다", async () => {
   return "둘 다 짚음";
 });
 
-await T("자막이 하나도 없으면 굽기를 막는다", async () => {
-  const 탈 = await 살펴(`장면 <${배경1}>\n  카메라 줌인 2초`);
-  if (!PRE.막힘(탈)) throw new Error("막지 않음 — 읽을 것 없는 영상이 나옵니다");
-  return 탈[0].글;
+await T("카메라만 적어도 그 길이만큼 나온다", async () => {
+  /* 자막이 없어도 장면은 카메라 움직임만큼 길어진다.
+     예전 검사는 '자막이 없으면 0초' 라고 여겨 굽기를 막았는데, 재 보니 아니었다.
+     배경 영상은 이 성질로 만든다. */
+  const doc = new StoryDoc(`장면 <${배경1}>\n  카메라 줌인 2초`);
+  await doc.build(library);
+  eq(Math.round(doc.seconds), 2, "카메라 2초짜리 장면의 길이");
+  const 빈것 = new StoryDoc(`장면 <${배경1}>`);
+  await 빈것.build(library);
+  if (빈것.seconds <= 0) throw new Error("아무것도 없는 장면이 0초 — 굽다가 터집니다");
+  return `카메라 2초 → ${doc.seconds}초 · 텅 빈 장면도 ${빈것.seconds}초는 됨`;
+});
+
+await T("자막 없는 배경 영상은 막지 않는다", async () => {
+  /* 자막 없이 카메라만 도는 **배경 영상**도 정당한 쓰임이다.
+     예전에는 자막·대사만 세어 이런 것의 굽기를 통째로 막았다 —
+     20초짜리 배경 영상을 만들려다 걸려서 알았다. */
+  const 탈 = await 살펴(`장면 <${배경1}>\n  카메라 줌인 10초\n  대기 10초`);
+  const 막은것 = 탈.find(t => t.등급 === "막음");
+  if (막은것) throw new Error("막음: " + 막은것.글);
+  if (!탈.some(t => /자막도 대사도/.test(t.글))) throw new Error("알려 주지도 않음");
+  return "굽기는 되고, 알려는 준다";
 });
 
 await T("읽기에 너무 빠른 자막을 알려 준다", async () => {
